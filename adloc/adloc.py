@@ -1,57 +1,8 @@
 # %%
-import time
-
 import numpy as np
 import torch
-from torch import nn
-from torch.autograd import Function
-from torch.nn import functional as F
-
-# %%
-############################# Not used ########################################
-# from .eikonal2d import _interp
-
-
-# class CalcTravelTime(Function):
-#     @staticmethod
-#     def forward(r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid, zgrid, nr, nz, h):
-#         tt = _interp(timetable, r.numpy(), z.numpy(), rgrid[0], zgrid[0], nr, nz, h)
-#         tt = torch.from_numpy(tt)
-#         return tt
-
-#     @staticmethod
-#     def setup_context(ctx, inputs, output):
-#         r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid, zgrid, nr, nz, h = inputs
-#         ctx.save_for_backward(r, z)
-#         ctx.timetable = timetable
-#         ctx.timetable_grad_r = timetable_grad_r
-#         ctx.timetable_grad_z = timetable_grad_z
-#         ctx.rgrid = rgrid
-#         ctx.zgrid = zgrid
-#         ctx.nr = nr
-#         ctx.nz = nz
-#         ctx.h = h
-
-#     @staticmethod
-#     def backward(ctx, grad_output):
-#         timetable_grad_r = ctx.timetable_grad_r
-#         timetable_grad_z = ctx.timetable_grad_z
-#         rgrid = ctx.rgrid
-#         zgrid = ctx.zgrid
-#         nr = ctx.nr
-#         nz = ctx.nz
-#         h = ctx.h
-#         r, z = ctx.saved_tensors
-
-#         grad_r = _interp(timetable_grad_r, r.numpy(), z.numpy(), rgrid[0], zgrid[0], nr, nz, h)
-#         grad_z = _interp(timetable_grad_z, r.numpy(), z.numpy(), rgrid[0], zgrid[0], nr, nz, h)
-
-#         grad_r = torch.from_numpy(grad_r) * grad_output
-#         grad_z = torch.from_numpy(grad_z) * grad_output
-
-#         return grad_r, grad_z, None, None, None, None, None, None, None, None
-
-################################################################################
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 # %%
@@ -151,10 +102,10 @@ class TravelTime(nn.Module):
         self.grad_type = grad_type
         if self.eikonal is not None:
             self.timetable_p = torch.tensor(
-                np.reshape(self.eikonal["up"], self.eikonal["nr"], self.eikonal["nz"]), dtype=dtype
+                np.reshape(self.eikonal["up"], (self.eikonal["nr"], self.eikonal["nz"])), dtype=dtype
             )
             self.timetable_s = torch.tensor(
-                np.reshape(self.eikonal["us"], self.eikonal["nr"], self.eikonal["nz"]), dtype=dtype
+                np.reshape(self.eikonal["us"], (self.eikonal["nr"], self.eikonal["nz"])), dtype=dtype
             )
             self.rgrid = self.eikonal["rgrid"]
             self.zgrid = self.eikonal["zgrid"]
@@ -183,9 +134,9 @@ class TravelTime(nn.Module):
             # h = self.eikonal["h"]
             # tt = CalcTravelTime.apply(r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid0, zgrid0, nr, nz, h)
 
-            if phase_type == 0:
+            if phase_type in [0, "P"]:
                 timetable = self.timetable_p
-            elif phase_type == 1:
+            elif phase_type in [1, "S"]:
                 timetable = self.timetable_s
             else:
                 raise ValueError("phase_type should be 0 or 1. for P and S, respectively.")
@@ -207,6 +158,11 @@ class TravelTime(nn.Module):
         loss = 0.0
         pred_time = torch.zeros(len(phase_type), dtype=torch.float32)
         resisudal = torch.zeros(len(phase_type), dtype=torch.float32)
+        station_index = torch.tensor(station_index, dtype=torch.long)
+        event_index = torch.tensor(event_index, dtype=torch.long)
+        phase_time = torch.tensor(phase_time, dtype=torch.float32)
+        phase_weight = torch.tensor(phase_weight, dtype=torch.float32)
+
         # for type in [0, 1]:  # phase_type: 0 for P, 1 for S
         for type in np.unique(phase_type):
 
@@ -377,130 +333,329 @@ class TravelTimeDD(nn.Module):
         return {"phase_time": pred_time, "loss": loss}
 
 
-class Test(nn.Module):
-    def __init__(self, timetable, rgrid, zgrid, grad_type="auto", timetable_grad_r=None, timetable_grad_z=None):
-        super().__init__()
-        self.timetable = timetable
-        self.rgrid = rgrid
-        self.zgrid = zgrid
-        self.nr = len(rgrid)
-        self.nz = len(zgrid)
-        self.h = rgrid[1] - rgrid[0]
-        assert self.h == zgrid[1] - zgrid[0]
-        self.grad_type = grad_type
-        self.timetable_grad_r = timetable_grad_r
-        self.timetable_grad_z = timetable_grad_z
-
-    def interp2d(self, time_table, r, z):
-        nr = len(self.rgrid)
-        nz = len(self.zgrid)
-        assert time_table.shape == (nr, nz)
-
-        ir0 = torch.floor((r - self.rgrid[0]) / self.h).clamp(0, nr - 2).long()
-        iz0 = torch.floor((z - self.zgrid[0]) / self.h).clamp(0, nz - 2).long()
-        ir1 = ir0 + 1
-        iz1 = iz0 + 1
-
-        r = (clamp(r, self.rgrid[0], self.rgrid[-1]) - self.rgrid[0]) / self.h
-        z = (clamp(z, self.zgrid[0], self.zgrid[-1]) - self.zgrid[0]) / self.h
-        # r = (torch.clamp(r, self.rgrid[0], self.rgrid[-1]) - self.rgrid[0]) / self.h
-        # z = (torch.clamp(z, self.zgrid[0], self.zgrid[-1]) - self.zgrid[0]) / self.h
-
-        ## https://en.wikipedia.org/wiki/Bilinear_interpolation
-        Q00 = time_table[ir0, iz0]
-        Q01 = time_table[ir0, iz1]
-        Q10 = time_table[ir1, iz0]
-        Q11 = time_table[ir1, iz1]
-
-        t = (
-            Q00 * (ir1 - r) * (iz1 - z)
-            + Q10 * (r - ir0) * (iz1 - z)
-            + Q01 * (ir1 - r) * (z - iz0)
-            + Q11 * (r - ir0) * (z - iz0)
-        )
-
-        return t
-
-    def forward(self, r, z):
-
-        if self.grad_type == "auto":
-            print(self.grad_type)
-            tt = self.interp2d(self.timetable, r, z)
-        else:
-            tt = CalcTravelTime.apply(
-                r,
-                z,
-                self.timetable,
-                self.timetable_grad_r,
-                self.timetable_grad_z,
-                self.rgrid,
-                self.zgrid,
-                self.nr,
-                self.nz,
-                self.h,
-            )
-
-        return tt
-
-
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-
-    starttime = time.time()
-    rgrid0 = 0
-    zgrid0 = 0
-    nr0 = 20
-    nz0 = 20
-    h = 1
-    rgrid = rgrid0 + h * np.arange(0, nr0)
-    zgrid = zgrid0 + h * np.arange(0, nz0)
-    r, z = np.meshgrid(rgrid, zgrid, indexing="ij")
-    timetable = np.sqrt(r**2 + z**2)
-    grad_r, grad_z = np.gradient(timetable, h, edge_order=2)
-    timetable = torch.from_numpy(timetable)
-    # timetable = timetable.flatten()
-    # grad_r = grad_r.flatten()
-    # grad_z = grad_z.flatten()
-
-    nr = 1000
-    nz = 1000
-    r = torch.linspace(-2, 22, nr)
-    z = torch.linspace(-2, 22, nz)
-    r, z = torch.meshgrid(r, z, indexing="ij")
-    r = r.flatten()
-    z = z.flatten()
-
-    test = Test(
-        timetable,
-        rgrid,
-        zgrid,
-        grad_type="auto",
-        timetable_grad_r=grad_r,
-        timetable_grad_z=grad_z,
-    )
-    r.requires_grad = True
-    z.requires_grad = True
-    tt = test(r, z)
-    tt.backward(torch.ones_like(tt))
-
-    endtime = time.time()
-    print(f"Time elapsed: {endtime - starttime} seconds.")
-    tt = tt.detach().numpy()
-
-    fig, ax = plt.subplots(3, 2)
-    im = ax[0, 0].imshow(tt.reshape(nr, nz))
-    fig.colorbar(im, ax=ax[0, 0])
-    im = ax[0, 1].imshow(timetable.reshape(nr0, nz0))
-    fig.colorbar(im, ax=ax[0, 1])
-    im = ax[1, 0].imshow(r.grad.reshape(nr, nz))
-    fig.colorbar(im, ax=ax[1, 0])
-    im = ax[1, 1].imshow(grad_r.reshape(nr0, nz0))
-    fig.colorbar(im, ax=ax[1, 1])
-    im = ax[2, 0].imshow(z.grad.reshape(nr, nz))
-    fig.colorbar(im, ax=ax[2, 0])
-    im = ax[2, 1].imshow(grad_z.reshape(nr0, nz0))
-    fig.colorbar(im, ax=ax[2, 1])
-    plt.show()
-
-
 # %%
+if __name__ == "__main__":
+
+    # %%
+    import json
+    import os
+    from datetime import datetime, timedelta
+
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    from eikonal2d import eikonal_solve
+    from torch import optim
+
+    ######################################## Create Synthetic Data #########################################
+    np.random.seed(0)
+    data_path = "data"
+    if not os.path.exists(data_path):
+        os.makedirs(data_path, exist_ok=True)
+    nx = 10
+    ny = 10
+    nr = int(np.sqrt(nx**2 + ny**2))
+    nz = 10
+    h = 3.0
+    eikonal_config = {"nr": nr, "nz": nz, "h": h}
+    with open(f"{data_path}/config.json", "w") as f:
+        json.dump(eikonal_config, f)
+    xgrid = np.arange(0, nx) * h
+    ygrid = np.arange(0, ny) * h
+    rgrid = np.arange(0, nr) * h
+    zgrid = np.arange(0, nz) * h
+    eikonal_config.update({"rgrid": rgrid, "zgrid": zgrid})
+    num_station = 10
+    num_event = 50
+    stations = []
+    for i in range(num_station):
+        x = np.random.uniform(xgrid[0], xgrid[-1])
+        y = np.random.uniform(ygrid[0], ygrid[-1])
+        z = np.random.uniform(zgrid[0], zgrid[0] + 3 * h)
+        stations.append({"station_id": f"STA{i:02d}", "x_km": x, "y_km": y, "z_km": z, "dt_s": 0.0})
+    stations = pd.DataFrame(stations)
+    stations["station_index"] = stations.index
+    stations.to_csv(f"{data_path}/stations.csv", index=False)
+    events = []
+    reference_time = pd.to_datetime("2021-01-01T00:00:00.000")
+    for i in range(num_event):
+        x = np.random.uniform(xgrid[0], xgrid[-1])
+        y = np.random.uniform(ygrid[0], ygrid[-1])
+        z = np.random.uniform(zgrid[0], zgrid[-1])
+        t = i * 5
+        events.append(
+            {"event_id": i, "event_time": reference_time + pd.Timedelta(seconds=t), "x_km": x, "y_km": y, "z_km": z}
+        )
+    events = pd.DataFrame(events)
+    events["event_index"] = events.index
+    events["event_time"] = events["event_time"].apply(lambda x: x.isoformat(timespec="milliseconds"))
+    events.to_csv(f"{data_path}/events.csv", index=False)
+    vpvs_ratio = 1.73
+    vp = np.ones((nr, nz)) * 6.0
+    vs = vp / vpvs_ratio
+
+    ## eikonal solver
+    up = 1000 * np.ones((nr, nz), dtype=np.float64)
+    us = 1000 * np.ones((nr, nz), dtype=np.float64)
+    ir0 = np.around((0 - rgrid[0]) / h).astype(np.int64)
+    iz0 = np.around((0 - zgrid[0]) / h).astype(np.int64)
+    up[ir0, iz0] = 0.0
+    us[ir0, iz0] = 0.0
+    up = eikonal_solve(up, vp, h)
+    us = eikonal_solve(us, vs, h)
+    up = torch.tensor(up, dtype=torch.float64)
+    us = torch.tensor(us, dtype=torch.float64)
+
+    # %%
+    picks = []
+    for j, station in stations.iterrows():
+        for i, event in events.iterrows():
+            r = np.linalg.norm([event["x_km"] - station["x_km"], event["y_km"] - station["y_km"]])
+            z = event["z_km"] - station["z_km"]
+            r = torch.tensor(r, dtype=torch.float64)
+            z = torch.tensor(z, dtype=torch.float64)
+            if np.random.rand() < 0.5:
+                tt = interp2d(up, r, z, rgrid, zgrid, h).item()
+                picks.append(
+                    {
+                        "event_id": event["event_id"],
+                        "station_id": station["station_id"],
+                        "phase_type": "P",
+                        "phase_time": pd.to_datetime(event["event_time"]) + pd.Timedelta(seconds=tt),
+                        "phase_score": 1.0,
+                        "travel_time": tt,
+                    }
+                )
+            if np.random.rand() < 0.5:
+                tt = interp2d(us, r, z, rgrid, zgrid, h).item()
+                picks.append(
+                    {
+                        "event_id": event["event_id"],
+                        "station_id": station["station_id"],
+                        "phase_type": "S",
+                        "phase_time": pd.to_datetime(event["event_time"]) + pd.Timedelta(seconds=tt),
+                        "phase_score": 1.0,
+                        "travel_time": tt,
+                    }
+                )
+    picks = pd.DataFrame(picks)
+    # use picks,  stations.index, events.index to set station_index and
+    picks["phase_time"] = picks["phase_time"].apply(lambda x: x.isoformat(timespec="milliseconds"))
+    picks["event_index"] = picks["event_id"].map(events.set_index("event_id")["event_index"])
+    picks["station_index"] = picks["station_id"].map(stations.set_index("station_id")["station_index"])
+    picks.to_csv(f"{data_path}/picks.csv", index=False)
+    # %%
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+    im = ax[0].imshow(vp[:, :], cmap="viridis")
+    fig.colorbar(im, ax=ax[0])
+    ax[0].set_title("Vp")
+    im = ax[1].imshow(vs[:, :], cmap="viridis")
+    fig.colorbar(im, ax=ax[1])
+    ax[1].set_title("Vs")
+    plt.savefig(f"{data_path}/true2d_vp_vs.png")
+
+    # %%
+    fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(5, 5))
+    ax[0, 0].scatter(stations["x_km"], stations["y_km"], c=stations["z_km"], marker="^", label="Station")
+    ax[0, 0].scatter(events["x_km"], events["y_km"], c=events["z_km"], marker=".", label="Event")
+    ax[0, 0].set_xlabel("x (km)")
+    ax[0, 0].set_ylabel("y (km)")
+    ax[0, 0].legend()
+    ax[0, 0].set_title("Station and Event Locations")
+    plt.savefig(f"{data_path}/station_event_3d.png")
+    # %%
+    fig, ax = plt.subplots(3, 1, squeeze=False, figsize=(10, 15))
+    picks = picks.merge(stations, on="station_id")
+    mapping_color = lambda x: f"C{int(x)}"
+    ax[0, 0].scatter(pd.to_datetime(picks["phase_time"]), picks["x_km"], c=picks["event_index"].apply(mapping_color))
+    ax[0, 0].scatter(
+        pd.to_datetime(events["event_time"]), events["x_km"], c=events["event_index"].apply(mapping_color), marker="x"
+    )
+    ax[0, 0].set_xlabel("Time (s)")
+    ax[0, 0].set_ylabel("x (km)")
+    ax[1, 0].scatter(pd.to_datetime(picks["phase_time"]), picks["y_km"], c=picks["event_index"].apply(mapping_color))
+    ax[1, 0].scatter(
+        pd.to_datetime(events["event_time"]), events["y_km"], c=events["event_index"].apply(mapping_color), marker="x"
+    )
+    ax[1, 0].set_xlabel("Time (s)")
+    ax[1, 0].set_ylabel("y (km)")
+    ax[2, 0].scatter(pd.to_datetime(picks["phase_time"]), picks["z_km"], c=picks["event_index"].apply(mapping_color))
+    ax[2, 0].scatter(
+        pd.to_datetime(events["event_time"]), events["z_km"], c=events["event_index"].apply(mapping_color), marker="x"
+    )
+    ax[2, 0].set_xlabel("Time (s)")
+    ax[2, 0].set_ylabel("z (km)")
+    plt.savefig(f"{data_path}/picks_3d.png")
+    # %%
+    ######################################### Load Synthetic Data #########################################
+    data_path = "data"
+    events = pd.read_csv(f"{data_path}/events.csv")
+    stations = pd.read_csv(f"{data_path}/stations.csv")
+    picks = pd.read_csv(f"{data_path}/picks.csv")
+    picks = picks.merge(events[["event_index", "event_time"]], on="event_index")
+
+    #### make the time values relative to event time in seconds
+    picks["phase_time_origin"] = picks["phase_time"].copy()
+    picks["phase_time"] = (
+        pd.to_datetime(picks["phase_time"]) - pd.to_datetime(picks["event_time"])
+    ).dt.total_seconds()  # relative to event time (arrival time)
+    picks.drop(columns=["event_time"], inplace=True)
+    events["event_time_origin"] = events["event_time"].copy()
+    events["event_time"] = np.zeros(len(events))  # relative to event time
+    ####
+
+    with open(f"{data_path}/config.json", "r") as f:
+        eikonal_config = json.load(f)
+    events = events.sort_values("event_index").set_index("event_index")
+    stations = stations.sort_values("station_index").set_index("station_index")
+    num_event = len(events)
+    num_station = len(stations)
+
+    ## eikonal solver
+    nr, nz, h = eikonal_config["nr"], eikonal_config["nz"], eikonal_config["h"]
+    rgrid = np.arange(0, nr) * h
+    zgrid = np.arange(0, nz) * h
+    eikonal_config.update({"rgrid": rgrid, "zgrid": zgrid})
+    vp = np.ones((nr, nz), dtype=np.float64) * 6.0
+    vs = vp / 1.73
+    up = 1000 * np.ones((nr, nz), dtype=np.float64)
+    us = 1000 * np.ones((nr, nz), dtype=np.float64)
+    ir0 = np.around((0 - rgrid[0]) / h).astype(np.int64)
+    iz0 = np.around((0 - zgrid[0]) / h).astype(np.int64)
+    up[ir0, iz0] = 0.0
+    us[ir0, iz0] = 0.0
+    up = eikonal_solve(up, vp, h)
+    us = eikonal_solve(us, vs, h)
+    eikonal_config.update({"up": up, "us": us})
+
+    ## initial event location
+    event_loc = (
+        events[["x_km", "y_km", "z_km"]].values * 0.0
+    )  # + stations[["x_km", "y_km", "z_km"]].values.mean(axis=0)
+    event_time = events[["event_time"]].values * 0.0
+
+    # %%
+    traveltime = TravelTime(
+        num_event,
+        num_station,
+        stations[["x_km", "y_km", "z_km"]].values,
+        stations[["dt_s"]].values,
+        event_loc,
+        event_time,
+        eikonal=eikonal_config,
+    )
+
+    # %%
+    output = traveltime(
+        picks["station_index"].values,
+        picks["event_index"].values,
+        picks["phase_type"].values,
+        picks["phase_time"].values,
+        picks["phase_score"].values,
+    )
+    loss = output["loss"]
+
+    ######################################### Optimize #########################################
+    # %%
+    print(
+        "Optimizing parameters:\n"
+        + "\n".join(
+            [f"{name}: {param.size()}" for name, param in traveltime.named_parameters() if param.requires_grad]
+        ),
+    )
+    params = [param for param in traveltime.parameters() if param.requires_grad]
+    optimizer = optim.LBFGS(params=params, max_iter=1000, line_search_fn="strong_wolfe")
+    print("Initial loss:", loss.item())
+
+    def closure():
+
+        optimizer.zero_grad()
+
+        output = traveltime(
+            picks["station_index"].values,
+            picks["event_index"].values,
+            picks["phase_type"].values,
+            picks["phase_time"].values,
+            picks["phase_score"].values,
+        )
+        loss = output["loss"]
+        loss.backward()
+
+        with torch.no_grad():
+            traveltime.event_loc.weight.data[:, 2].clamp_(min=3.0)
+
+        return loss
+
+    optimizer.step(closure)
+
+    output = traveltime(
+        picks["station_index"].values,
+        picks["event_index"].values,
+        picks["phase_type"].values,
+        picks["phase_time"].values,
+        picks["phase_score"].values,
+    )
+    loss = output["loss"]
+    print("Final loss:", loss.item())
+
+    # %%
+    event_loc_init = event_loc.copy()
+    event_loc = traveltime.event_loc.weight.detach().numpy()
+
+    fig, ax = plt.subplots(1, 3, squeeze=False, figsize=(15, 5))
+    # ax[0, 0].plot(stations["x_km"], stations["y_km"], "^", label="Station")
+    ax[0, 0].plot(events["x_km"], events["y_km"], ".", label="True Events")
+    ax[0, 0].plot(event_loc_init[:, 0], event_loc_init[:, 1], "x", label="Initial Events")
+    for i in range(len(event_loc_init)):
+        ax[0, 0].plot(
+            [events["x_km"].iloc[i], event_loc_init[i, 0]],
+            [events["y_km"].iloc[i], event_loc_init[i, 1]],
+            "k--",
+            alpha=0.5,
+        )
+    ax[0, 0].plot(event_loc[:, 0], event_loc[:, 1], "x", label="Inverted Events")
+    for i in range(len(event_loc)):
+        ax[0, 0].plot(
+            [events["x_km"].iloc[i], event_loc[i, 0]], [events["y_km"].iloc[i], event_loc[i, 1]], "r--", alpha=0.5
+        )
+    ax[0, 0].set_xlabel("x (km)")
+    ax[0, 0].set_ylabel("y (km)")
+    ax[0, 0].legend()
+    # ax[0, 0].set_title("Station and Event Locations")
+
+    ax[0, 1].plot(events["x_km"], events["z_km"], ".", label="True Events")
+    ax[0, 1].plot(event_loc_init[:, 0], event_loc_init[:, 2], "x", label="Initial Events")
+    for i in range(len(event_loc_init)):
+        ax[0, 1].plot(
+            [events["x_km"].iloc[i], event_loc_init[i, 0]],
+            [events["z_km"].iloc[i], event_loc_init[i, 2]],
+            "k--",
+            alpha=0.5,
+        )
+    ax[0, 1].plot(event_loc[:, 0], event_loc[:, 2], "x", label="Inverted Events")
+    for i in range(len(event_loc)):
+        ax[0, 1].plot(
+            [events["x_km"].iloc[i], event_loc[i, 0]], [events["z_km"].iloc[i], event_loc[i, 2]], "r--", alpha=0.5
+        )
+    ax[0, 1].set_xlabel("x (km)")
+    ax[0, 1].set_ylabel("z (km)")
+    ax[0, 1].legend()
+
+    ax[0, 2].plot(events["y_km"], events["z_km"], ".", label="True Events")
+    ax[0, 2].plot(event_loc_init[:, 1], event_loc_init[:, 2], "x", label="Initial Events")
+    for i in range(len(event_loc_init)):
+        ax[0, 2].plot(
+            [events["y_km"].iloc[i], event_loc_init[i, 1]],
+            [events["z_km"].iloc[i], event_loc_init[i, 2]],
+            "k--",
+            alpha=0.5,
+        )
+    ax[0, 2].plot(event_loc[:, 1], event_loc[:, 2], "x", label="Inverted Events")
+    for i in range(len(event_loc)):
+        ax[0, 2].plot(
+            [events["y_km"].iloc[i], event_loc[i, 1]], [events["z_km"].iloc[i], event_loc[i, 2]], "r--", alpha=0.5
+        )
+    ax[0, 2].set_xlabel("y (km)")
+    ax[0, 2].set_ylabel("z (km)")
+    ax[0, 2].legend()
+
+    plt.savefig(f"{data_path}/inverted_station_event.png")
