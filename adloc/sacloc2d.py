@@ -1,15 +1,14 @@
 # %%
-import matplotlib
 import numpy as np
 import scipy
 from sklearn.base import BaseEstimator
 
-# from sklearn.linear_model import RANSACRegressor
 from ._ransac import RANSACRegressor
-from .eikonal2d import eikonal_solve, grad_traveltime, traveltime
+from .eikonal2d import grad_traveltime, init_eikonal2d, traveltime
+
+# from sklearn.linear_model import RANSACRegressor
 
 np.random.seed(0)
-# matplotlib.use("Agg")
 
 
 class ADLoc(BaseEstimator):
@@ -165,65 +164,6 @@ class ADLoc(BaseEstimator):
         return R2
 
 
-def init_eikonal2d(config):
-
-    # nr = 21
-    # nz = 21
-    # vel = {"p": 6.0, "s": 6.0 / 1.73}
-
-    xlim = config["xlim_km"]
-    ylim = config["ylim_km"]
-    zlim = config["zlim_km"]
-    # vel = config["vel"]
-    if "vel" in config:
-        vel = config["vel"]
-    else:
-        vel = {"P": 6.0, "S": 6.0 / 1.73}
-    if "h" in config:
-        h = config["h"]
-    else:
-        h = 1.0
-    nr = int(np.sqrt((xlim[1] - xlim[0]) ** 2 + (ylim[1] - ylim[0]) ** 2) / h)
-    nz = int((zlim[1] - zlim[0]) / h)
-    rgrid = np.arange(nr) * h
-    zgrid = np.arange(nz) * h
-
-    print(f"{nr=}, {nz=}")
-    print(f"{len(stations) = }")
-    vp = np.ones((nr, nz)) * vel["P"]
-    vs = np.ones((nr, nz)) * vel["S"]
-
-    up = 1000 * np.ones((nr, nz))
-    up[0, 0] = 0.0
-
-    up = eikonal_solve(up, vp, h)
-    grad_up = np.gradient(up, h, edge_order=2)
-    up = up.ravel()
-    grad_up = [x.ravel() for x in grad_up]
-
-    us = 1000 * np.ones((nr, nz))
-    us[0, 0] = 0.1
-
-    us = eikonal_solve(us, vs, h)
-    grad_us = np.gradient(us, h, edge_order=2)
-    us = us.ravel()
-    grad_us = [x.ravel() for x in grad_us]
-
-    config = {
-        "up": up,
-        "us": us,
-        "grad_up": grad_up,
-        "grad_us": grad_us,
-        "rgrid": rgrid,
-        "zgrid": zgrid,
-        "nr": nr,
-        "nz": nz,
-        "h": h,
-    }
-
-    return config
-
-
 # %%
 if __name__ == "__main__":
 
@@ -233,35 +173,186 @@ if __name__ == "__main__":
 
     import matplotlib.pyplot as plt
     import pandas as pd
+    from eikonal2d import _interp, eikonal_solve
 
-    # data_path = "../tests/results"
-    data_path = "./results"
-    events = pd.read_csv(os.path.join(data_path, "events.csv"), parse_dates=["time"])
-    stations = pd.read_csv(os.path.join(data_path, "stations.csv"))
-    picks = pd.read_csv(os.path.join(data_path, "picks.csv"), parse_dates=["phase_time"])
-    with open(os.path.join(data_path, "config.json"), "r") as f:
-        config = json.load(f)
+    ######################################## Create Synthetic Data #########################################
+    np.random.seed(0)
+    data_path = "data"
+    if not os.path.exists(data_path):
+        os.makedirs(data_path, exist_ok=True)
+    nx = 10
+    ny = 10
+    nr = int(np.sqrt(nx**2 + ny**2))
+    nz = 10
+    h = 3.0
+    xgrid = np.arange(0, nx) * h
+    ygrid = np.arange(0, ny) * h
+    rgrid = np.arange(0, nr) * h
+    zgrid = np.arange(0, nz) * h
+    xlim = [xgrid[0].item(), xgrid[-1].item()]
+    ylim = [ygrid[0].item(), ygrid[-1].item()]
+    zlim = [zgrid[0].item(), zgrid[-1].item()]
+    eikonal_config = {"nr": nr, "nz": nz, "h": h, "xlim_km": xlim, "ylim_km": ylim, "zlim_km": zlim}
+    with open(f"{data_path}/config.json", "w") as f:
+        json.dump(eikonal_config, f)
+    eikonal_config.update({"rgrid": rgrid, "zgrid": zgrid})
+    num_station = 10
+    num_event = 50
+    stations = []
+    for i in range(num_station):
+        x = np.random.uniform(xgrid[0], xgrid[-1])
+        y = np.random.uniform(ygrid[0], ygrid[-1])
+        z = np.random.uniform(zgrid[0], zgrid[0] + 3 * h)
+        stations.append({"station_id": f"STA{i:02d}", "x_km": x, "y_km": y, "z_km": z, "dt_s": 0.0})
+    stations = pd.DataFrame(stations)
+    stations["station_index"] = stations.index
+    stations.to_csv(f"{data_path}/stations.csv", index=False)
+    events = []
+    reference_time = pd.to_datetime("2021-01-01T00:00:00.000")
+    for i in range(num_event):
+        x = np.random.uniform(xgrid[0], xgrid[-1])
+        y = np.random.uniform(ygrid[0], ygrid[-1])
+        z = np.random.uniform(zgrid[0], zgrid[-1])
+        t = i * 5
+        events.append(
+            {"event_id": i, "event_time": reference_time + pd.Timedelta(seconds=t), "x_km": x, "y_km": y, "z_km": z}
+        )
+    events = pd.DataFrame(events)
+    events["event_index"] = events.index
+    events["event_time"] = events["event_time"].apply(lambda x: x.isoformat(timespec="milliseconds"))
+    events.to_csv(f"{data_path}/events.csv", index=False)
+    vpvs_ratio = 1.73
+    vp = np.ones((nr, nz)) * 6.0
+    vs = vp / vpvs_ratio
 
-    eikonal = init_eikonal2d(config)
-    eikonal = None
+    ## eikonal solver
+    up = 1000.0 * np.ones((nr, nz), dtype=np.float64)
+    us = 1000.0 * np.ones((nr, nz), dtype=np.float64)
+    ir0 = np.around((0.0 - rgrid[0]) / h).astype(np.int64)
+    iz0 = np.around((0.0 - zgrid[0]) / h).astype(np.int64)
+    up[ir0, iz0] = 0.0
+    us[ir0, iz0] = 0.0
+    up = eikonal_solve(up, vp, h)
+    us = eikonal_solve(us, vs, h)
+    up = up.ravel()
+    us = us.ravel()
+
+    # %%
+    picks = []
+    for j, station in stations.iterrows():
+        for i, event in events.iterrows():
+            r = np.array([np.linalg.norm([event["x_km"] - station["x_km"], event["y_km"] - station["y_km"]])])
+            z = np.array([event["z_km"] - station["z_km"]])
+            if np.random.rand() < 0.5:
+                tt = _interp(up, r, z, rgrid[0], zgrid[0], nr, nz, h)[0]
+                picks.append(
+                    {
+                        "event_id": event["event_id"],
+                        "station_id": station["station_id"],
+                        "phase_type": "P",
+                        "phase_time": pd.to_datetime(event["event_time"]) + pd.Timedelta(seconds=tt),
+                        "phase_score": 1.0,
+                        "travel_time": tt,
+                    }
+                )
+            if np.random.rand() < 0.5:
+                tt = _interp(us, r, z, rgrid[0], zgrid[0], nr, nz, h)[0]
+                picks.append(
+                    {
+                        "event_id": event["event_id"],
+                        "station_id": station["station_id"],
+                        "phase_type": "S",
+                        "phase_time": pd.to_datetime(event["event_time"]) + pd.Timedelta(seconds=tt),
+                        "phase_score": 1.0,
+                        "travel_time": tt,
+                    }
+                )
+    picks = pd.DataFrame(picks)
+    # use picks,  stations.index, events.index to set station_index and
+    picks["phase_time"] = picks["phase_time"].apply(lambda x: x.isoformat(timespec="milliseconds"))
+    picks["event_index"] = picks["event_id"].map(events.set_index("event_id")["event_index"])
+    picks["station_index"] = picks["station_id"].map(stations.set_index("station_id")["station_index"])
+    picks.to_csv(f"{data_path}/picks.csv", index=False)
+    # %%
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
+    im = ax[0].imshow(vp[:, :], cmap="viridis")
+    fig.colorbar(im, ax=ax[0])
+    ax[0].set_title("Vp")
+    im = ax[1].imshow(vs[:, :], cmap="viridis")
+    fig.colorbar(im, ax=ax[1])
+    ax[1].set_title("Vs")
+    plt.savefig(f"{data_path}/true2d_vp_vs.png")
+
+    # %%
+    fig, ax = plt.subplots(1, 1, squeeze=False, figsize=(5, 5))
+    ax[0, 0].scatter(stations["x_km"], stations["y_km"], c=stations["z_km"], marker="^", label="Station")
+    ax[0, 0].scatter(events["x_km"], events["y_km"], c=events["z_km"], marker=".", label="Event")
+    ax[0, 0].set_xlabel("x (km)")
+    ax[0, 0].set_ylabel("y (km)")
+    ax[0, 0].legend()
+    ax[0, 0].set_title("Station and Event Locations")
+    plt.savefig(f"{data_path}/station_event_3d.png")
+    # %%
+    fig, ax = plt.subplots(3, 1, squeeze=False, figsize=(10, 15))
+    picks = picks.merge(stations, on="station_id")
+    mapping_color = lambda x: f"C{int(x)}"
+    ax[0, 0].scatter(pd.to_datetime(picks["phase_time"]), picks["x_km"], c=picks["event_index"].apply(mapping_color))
+    ax[0, 0].scatter(
+        pd.to_datetime(events["event_time"]), events["x_km"], c=events["event_index"].apply(mapping_color), marker="x"
+    )
+    ax[0, 0].set_xlabel("Time (s)")
+    ax[0, 0].set_ylabel("x (km)")
+    ax[1, 0].scatter(pd.to_datetime(picks["phase_time"]), picks["y_km"], c=picks["event_index"].apply(mapping_color))
+    ax[1, 0].scatter(
+        pd.to_datetime(events["event_time"]), events["y_km"], c=events["event_index"].apply(mapping_color), marker="x"
+    )
+    ax[1, 0].set_xlabel("Time (s)")
+    ax[1, 0].set_ylabel("y (km)")
+    ax[2, 0].scatter(pd.to_datetime(picks["phase_time"]), picks["z_km"], c=picks["event_index"].apply(mapping_color))
+    ax[2, 0].scatter(
+        pd.to_datetime(events["event_time"]), events["z_km"], c=events["event_index"].apply(mapping_color), marker="x"
+    )
+    ax[2, 0].set_xlabel("Time (s)")
+    ax[2, 0].set_ylabel("z (km)")
+    plt.savefig(f"{data_path}/picks_3d.png")
+
+    # %%
+    ######################################### Load Synthetic Data #########################################
+    data_path = "data"
+    events = pd.read_csv(f"{data_path}/events.csv")
+    stations = pd.read_csv(f"{data_path}/stations.csv")
+    picks = pd.read_csv(f"{data_path}/picks.csv")
+    picks = picks.merge(events[["event_index", "event_time"]], on="event_index")
+
+    #### make the time values relative to event time in seconds
+    picks["phase_time_origin"] = picks["phase_time"].copy()
+    picks["phase_time"] = (
+        pd.to_datetime(picks["phase_time"]) - pd.to_datetime(picks["event_time"])
+    ).dt.total_seconds()  # relative to event time (arrival time)
+    picks.drop(columns=["event_time"], inplace=True)
+    events["event_time_origin"] = events["event_time"].copy()
+    events["event_time"] = np.zeros(len(events))  # relative to event time
+    ####
+
+    with open(f"{data_path}/config.json", "r") as f:
+        eikonal_config = json.load(f)
+    num_event = len(events)
+    num_station = len(stations)
+    ## eikonal solver
+    vpvs_ratio = 1.73
+    vel = {
+        "Z": [0, 100.0],
+        "P": [6.0, 6.0],
+        "S": [6.0 / vpvs_ratio, 6.0 / vpvs_ratio],
+    }
+    eikonal_config["vel"] = vel
+    eikonal_config = init_eikonal2d(eikonal_config)
 
     # %%
     stations["idx_sta"] = stations.index  # reindex in case the index does not start from 0 or is not continuous
-
     events["idx_eve"] = events.index  # reindex in case the index does not start from 0 or is not continuous
-
     picks = picks.merge(events[["event_index", "idx_eve"]], on="event_index")
-
     picks = picks.merge(stations[["station_id", "idx_sta"]], on="station_id")
-
-    # # %%
-    # for idx_sta, picks_station in picks.groupby("idx_sta"):
-    #     station_loc = stations.loc[idx_sta]
-    #     print(f"Station {station_loc['station_id']} at ({station_loc['x_km']}, {station_loc['y_km']})")
-    #     for _, pick in picks_station.iterrows():
-    #         event_loc = events.loc[pick["idx_eve"]]
-    #         print(f"Event {event_loc['event_index']} at ({event_loc['x_km']}, {event_loc['y_km']})")
-    #     raise
 
     # %%
     event_index = 1
@@ -274,124 +365,108 @@ if __name__ == "__main__":
         station_loc = stations.loc[pick["idx_sta"]]
         print(f"Station {station_loc['station_id']} at ({station_loc['x_km']}, {station_loc['y_km']})")
 
-    # %%
-    plt.figure()
-    # plt.scatter(picks_event["x_km"], picks_event["y_km"], c=picks_event["phase_time"])
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5), squeeze=False)
     tmp = picks_event.merge(stations[["x_km", "y_km", "z_km", "station_id"]], on="station_id")
     tmp["dist_km"] = tmp[["x_km", "y_km", "z_km"]].apply(
         lambda x: np.linalg.norm(x - event_loc[["x_km", "y_km", "z_km"]]), axis=1
     )
-    plt.scatter(tmp["x_km"], tmp["y_km"], c=tmp["phase_time"], cmap="viridis")
-    plt.scatter(event_loc["x_km"], event_loc["y_km"], c="r")
-    plt.colorbar()
-    plt.show()
+    im = ax[0, 0].scatter(tmp["x_km"], tmp["y_km"], c=tmp["phase_time"], cmap="viridis_r", marker="^")
+    ax[0, 0].scatter(event_loc["x_km"], event_loc["y_km"], c="r", marker="x")
+    ax[0, 0].set_xlabel("x (km)")
+    ax[0, 0].set_ylabel("y (km)")
+    ax[0, 0].set_aspect("equal")
+    plt.colorbar(im, ax=ax[0, 0])
 
-    plt.figure()
     colors = lambda x: "r" if x == "P" else "b"
-    plt.scatter(tmp["phase_time"], tmp["dist_km"], c=tmp["phase_type"].apply(colors))
-    plt.show()
+    ax[0, 1].scatter(tmp["phase_time"], tmp["dist_km"], c=tmp["phase_type"].apply(colors))
+    ax[0, 1].set_xlabel("Time (s)")
+    ax[0, 1].set_ylabel("Distance (km)")
+    plt.savefig(f"{data_path}/picks_event_{event_index}.png")
 
     # %%
-
-    # %%
+    config = {}
+    config["xlim_km"] = eikonal_config["xlim_km"]
+    config["ylim_km"] = eikonal_config["ylim_km"]
+    config["zlim_km"] = eikonal_config["zlim_km"]
+    config["bfgs_bounds"] = [
+        (config["xlim_km"][0], config["xlim_km"][1]),
+        (config["ylim_km"][0], config["ylim_km"][1]),
+        (config["zlim_km"][0], config["zlim_km"][1]),
+        (None, None),
+    ]
     config["vel"] = {"P": 6.0, "S": 6.0 / 1.73}
     X = picks_event.merge(
         stations[["x_km", "y_km", "z_km", "station_id"]],
         on="station_id",
     )
-    t0 = X["phase_time"].min()
-    X.rename(columns={"phase_type": "type", "phase_time": "t_s"}, inplace=True)
-    X["t_s"] = (X["t_s"] - t0).dt.total_seconds()
-    X = X[["x_km", "y_km", "z_km", "t_s", "type", "idx_sta"]]
+    # t0 = X["phase_time"].min() ## already convert to travel time in seconds
+    X.rename(columns={"phase_type": "type", "phase_time": "t_s", "phase_score": "score"}, inplace=True)
+    # X["t_s"] = (X["t_s"] - t0).dt.total_seconds()
+    X = X[["x_km", "y_km", "z_km", "t_s", "type", "score", "idx_sta"]]
     mapping_int = {"P": 0, "S": 1}
     config["vel"] = {mapping_int[k]: v for k, v in config["vel"].items()}
     X["type"] = X["type"].apply(lambda x: mapping_int[x.upper()])
 
-    # estimator = ADLoc(config_, event_loc=np.array([x0, y0, z0]), event_t=(origin_time - t0).total_seconds())
-    estimator = ADLoc(config, stations=stations[["x_km", "y_km", "z_km"]].values, num_event=num_event, eikonal=eikonal)
-    # tt = estimator.predict(X[["x_km", "y_km", "z_km", "type"]].values)
-    # estimator.score(X[["x_km", "y_km", "z_km", "type"]].values, y=X["t_s"].values)
-    tt = estimator.predict(X[["idx_sta", "type"]].values, event_index=event_index)
+    estimator = ADLoc(
+        config, stations=stations[["x_km", "y_km", "z_km"]].values, num_event=num_event, eikonal=eikonal_config
+    )
+    tt_init = estimator.predict(X[["idx_sta", "type"]].values, event_index=event_index)
     estimator.score(X[["idx_sta", "type"]].values, y=X["t_s"].values, event_index=event_index)
 
-    print(f"True event loc: {event_loc[['x_km', 'y_km', 'z_km']].values}")
-    print(f"Init event loc: {estimator.events[:3]}")
+    print(f"Init event loc: {estimator.events[event_index].round(3)}")
 
     # %%
-    plt.figure()
+    estimator.fit(X[["idx_sta", "type", "score"]].values, y=X["t_s"].values, event_index=event_index)
+    estimator.score(X[["idx_sta", "type"]].values, y=X["t_s"].values, event_index=event_index)
+    tt = estimator.predict(X[["idx_sta", "type"]].values, event_index=event_index)
+    print("Basic:")
+    print(f"True event loc: {event_loc[['x_km', 'y_km', 'z_km']].values.astype(float).round(3)}")
+    print(f"Invt event loc: {estimator.events[event_index].round(3)}")
+
+    # %%
+    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     X["dist_km"] = X[["x_km", "y_km", "z_km"]].apply(
         lambda x: np.linalg.norm(x - estimator.events[event_index, :3]), axis=1
     )
     colors = lambda x: "r" if x == 0 else "b"
-    plt.scatter(X["t_s"], X["dist_km"], c=X["type"].apply(colors), marker="x")
-    plt.scatter(tt, X["dist_km"], c=X["type"].apply(colors), marker="o")
-    plt.show()
+    ax.scatter(X["t_s"], X["dist_km"], s=20, marker="o", label="Picks")
+    ax.scatter(tt_init, X["dist_km"], s=40, marker="x", label="Init")
+    ax.scatter(tt, X["dist_km"], s=40, marker="x", label="Invert")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Distance (km)")
+    ax.legend()
+    fig.savefig(f"{data_path}/picks_xt_{event_index}.png")
 
     # %%
-    # estimator.fit(X[["x_km", "y_km", "z_km", "type"]].values, y=X["t_s"].values)
-    # estimator.score(X[["x_km", "y_km", "z_km", "type"]].values, y=X["t_s"].values)
-    # tt = estimator.predict(X[["x_km", "y_km", "z_km", "type"]].values)
-    estimator.fit(X[["idx_sta", "type"]].values, y=X["t_s"].values, event_index=event_index)
-    estimator.score(X[["idx_sta", "type"]].values, y=X["t_s"].values, event_index=event_index)
-    tt = estimator.predict(X[["idx_sta", "type"]].values, event_index=event_index)
-    print(f"True event loc: {event_loc[['x_km', 'y_km', 'z_km']].values}")
-    print(f"Estimated event loc: {estimator.events[:3]}")
-
-    # %%
-    plt.figure()
-    X["dist_km"] = X[["x_km", "y_km", "z_km"]].apply(
-        lambda x: np.linalg.norm(x - estimator.events[event_index, :3]), axis=1
-    )
-    colors = lambda x: "r" if x == 0 else "b"
-    plt.scatter(X["t_s"], X["dist_km"], c=X["type"].apply(colors), marker="x")
-    plt.scatter(tt, X["dist_km"], c=X["type"].apply(colors), marker="o")
-    plt.show()
-
-    # %%
-    # reg = RANSACRegressor(estimator=ADLoc(config_, event_loc=np.array([[x0, y0, 0]]), event_t=0), random_state=0, min_samples=10, residual_threshold=4.0).fit(X[["x_km", "y_km", "z_km", "vel"]].values, X["t_s"].values)
     reg = RANSACRegressor(
         estimator=ADLoc(
-            config, stations=stations[["x_km", "y_km", "z_km"]].values, num_event=num_event, eikonal=eikonal
+            config, stations=stations[["x_km", "y_km", "z_km"]].values, num_event=num_event, eikonal=eikonal_config
         ),
         random_state=0,
         min_samples=4,
         residual_threshold=1.0,
     )
-    # reg.fit(X[["x_km", "y_km", "z_km", "type"]].values, X["t_s"].values)
-    reg.fit(X[["idx_sta", "type"]].values, X["t_s"].values, event_index=event_index)
-    # reg = RANSACRegressor(estimator=ADLoc(config_), random_state=0, min_samples=4, residual_threshold=1.0).fit(X[["x_km", "y_km", "z_km", "type"]].values, X["t_s"].values)
+    reg.fit(X[["idx_sta", "type", "score"]].values, X["t_s"].values, event_index=event_index)
     mask = reg.inlier_mask_
     estimator = reg.estimator_
-    # estimator.score(X[["x_km", "y_km", "z_km", "type"]].values, y=X["t_s"].values)
-    # tt = estimator.predict(X[["x_km", "y_km", "z_km", "type"]].values)
     estimator.score(X[["idx_sta", "type"]].values, y=X["t_s"].values, event_index=event_index)
     tt = estimator.predict(X[["idx_sta", "type"]].values, event_index=event_index)
-    print(f"True event loc: {event_loc[['x_km', 'y_km', 'z_km']].values}")
-    print(f"Estimated event loc: {estimator.events[:3]}")
-
-    # %%
-    plt.figure()
-    X["dist_km"] = X[["x_km", "y_km", "z_km"]].apply(
-        lambda x: np.linalg.norm(x - estimator.events[event_index, :3]), axis=1
-    )
-    colors = lambda x: "r" if x == 0 else "b"
-    plt.scatter(X["t_s"], X["dist_km"], c=X["type"].apply(colors), marker="x")
-    plt.scatter(tt, X["dist_km"], c=X["type"].apply(colors), marker="o")
-    plt.show()
+    print("RANSAC:")
+    print(f"True event loc: {event_loc[['x_km', 'y_km', 'z_km']].values.astype(float).round(3)}")
+    print(f"Invt event loc: {estimator.events[event_index].round(3)}")
 
     # %% add random picks
-    # %%
     config["vel"] = {"P": 6.0, "S": 6.0 / 1.73}
     X = picks_event.merge(stations[["x_km", "y_km", "z_km", "station_id"]], on="station_id")
-    t0 = X["phase_time"].min()
-    X.rename(columns={"phase_type": "type", "phase_time": "t_s"}, inplace=True)
-    X["t_s"] = (X["t_s"] - t0).dt.total_seconds()
-    X = X[["x_km", "y_km", "z_km", "t_s", "type", "idx_sta"]]
+    # t0 = X["phase_time"].min() ## already convert to travel time in seconds
+    X.rename(columns={"phase_type": "type", "phase_time": "t_s", "phase_score": "score"}, inplace=True)
+    # X["t_s"] = (X["t_s"] - t0).dt.total_seconds()
+    X = X[["x_km", "y_km", "z_km", "t_s", "type", "score", "idx_sta"]]
     mapping_int = {"P": 0, "S": 1}
     config["vel"] = {mapping_int[k]: v for k, v in config["vel"].items()}
     X["type"] = X["type"].apply(lambda x: mapping_int[x.upper()])
 
-    num_noise = len(X) // 2
+    num_noise = len(X) // 3
     noise = pd.DataFrame(
         {
             "x_km": np.random.rand(num_noise) * (X["x_km"].max() - X["x_km"].min()) + X["x_km"].min(),
@@ -399,6 +474,7 @@ if __name__ == "__main__":
             "z_km": np.random.rand(num_noise) * (X["z_km"].max() - X["z_km"].min()) + X["z_km"].min(),
             "t_s": np.random.rand(num_noise) * (X["t_s"].max() - X["t_s"].min()) + X["t_s"].min(),
             "type": np.random.choice([0, 1], num_noise),
+            "score": 1.0,
             "idx_sta": np.random.choice(X["idx_sta"], num_noise),
             "mask": [0] * num_noise,
         }
@@ -408,43 +484,48 @@ if __name__ == "__main__":
     X["dist_km"] = X[["x_km", "y_km", "z_km"]].apply(
         lambda x: np.linalg.norm(x - event_loc[["x_km", "y_km", "z_km"]]), axis=1
     )
-    plt.figure()
-    colors = lambda x: "r" if x == 0 else "b"
-    plt.scatter(X["t_s"], X["dist_km"], c=X["type"].apply(colors), marker="o")
-    plt.scatter(X["t_s"][X["mask"] == 0], X["dist_km"][X["mask"] == 0], c="k", marker="o", alpha=0.6)
-    plt.show()
 
     # %%
+    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    colors = lambda x: "r" if x == 0 else "b"
+    ax.scatter(X["t_s"], X["dist_km"], c=X["type"].apply(colors), marker="o", label="Picks")
+    ax.scatter(X["t_s"][X["mask"] == 0], X["dist_km"][X["mask"] == 0], c="k", marker="o", alpha=0.6, label="Noise")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Distance (km)")
+    ax.legend()
+    plt.savefig(f"{data_path}/picks_xt_{event_index}_noise.png")
 
-    # reg = RANSACRegressor(estimator=ADLoc(config_, event_loc=np.array([[x0, y0, 0]]), event_t=0), random_state=0, min_samples=10, residual_threshold=4.0).fit(X[["x_km", "y_km", "z_km", "vel"]].values, X["t_s"].values)
+    # %%
     reg = RANSACRegressor(
         estimator=ADLoc(
-            config, stations=stations[["x_km", "y_km", "z_km"]].values, num_event=num_event, eikonal=eikonal
+            config, stations=stations[["x_km", "y_km", "z_km"]].values, num_event=num_event, eikonal=eikonal_config
         ),
         random_state=0,
         min_samples=4,
         residual_threshold=1.0,
     )
-    # reg.fit(X[["x_km", "y_km", "z_km", "type"]].values, X["t_s"].values)
-    reg.fit(X[["idx_sta", "type"]].values, X["t_s"].values, event_index=event_index)
-    # reg = RANSACRegressor(estimator=ADLoc(config_), random_state=0, min_samples=4, residual_threshold=1.0).fit(X[["x_km", "y_km", "z_km", "type"]].values, X["t_s"].values)
+    reg.fit(X[["idx_sta", "type", "score"]].values, X["t_s"].values, event_index=event_index)
     mask = reg.inlier_mask_
     estimator = reg.estimator_
-    # estimator.score(X[["x_km", "y_km", "z_km", "type"]].values, y=X["t_s"].values)
-    # tt = estimator.predict(X[["x_km", "y_km", "z_km", "type"]].values)
     estimator.score(X[["idx_sta", "type"]].values, y=X["t_s"].values, event_index=event_index)
     tt = estimator.predict(X[["idx_sta", "type"]].values, event_index=event_index)
-    print(f"True event loc: {event_loc[['x_km', 'y_km', 'z_km']].values}")
-    print(f"Estimated event loc: {estimator.events[:3]}")
+    print("RANSAC with noise picks:")
+    print(f"True event loc: {event_loc[['x_km', 'y_km', 'z_km']].values.astype(float).round(3)}")
+    print(f"Invt event loc: {estimator.events[event_index].round(3)}")
+
     # %%
-    plt.figure()
+    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     X["dist_km"] = X[["x_km", "y_km", "z_km"]].apply(
-        lambda x: np.linalg.norm(x - event_loc[["x_km", "y_km", "z_km"]]), axis=1
+        # lambda x: np.linalg.norm(x - estimator.events[event_index, :3]), axis=1
+        lambda x: np.linalg.norm(x - event_loc[["x_km", "y_km", "z_km"]]),
+        axis=1,
     )
     colors = lambda x: "r" if x == 0 else "b"
-    plt.scatter(X["t_s"], X["dist_km"], c=X["type"].apply(colors), marker="o")
-    plt.scatter(tt, X["dist_km"], c=X["type"].apply(colors), marker="x", s=100)
-    plt.scatter(X["t_s"][~mask], X["dist_km"][~mask], c="k", marker="o", alpha=0.6)
-    plt.show()
-
-# %%
+    ax.scatter(X["t_s"], X["dist_km"], s=40, c="r", marker="o", label="Picks")
+    ax.scatter(X["t_s"][~mask], X["dist_km"][~mask], c="k", s=40, alpha=0.8, marker="o", label="Noise")
+    # ax.scatter(tt_init, X["dist_km"], s=40, marker="x", label="Init")
+    ax.scatter(tt[mask], X["dist_km"][mask], s=60, c="g", marker="x", label="Invert")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Distance (km)")
+    ax.legend()
+    fig.savefig(f"{data_path}/picks_xt_{event_index}_ransac.png")

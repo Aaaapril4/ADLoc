@@ -314,6 +314,12 @@ def grad_traveltime(event_index, station_index, phase_type, events, stations, ei
 
 if __name__ == "__main__":
 
+    import os
+
+    data_path = "data"
+    if not os.path.exists(data_path):
+        os.makedirs(data_path, exist_ok=True)
+
     # test_get_index()
 
     nx = 21
@@ -402,7 +408,7 @@ if __name__ == "__main__":
     fig.colorbar(cax2, ax=ax[2])
     # ax[2].invert_yaxis()
     ax[2].set_title("tp_z")
-    plt.savefig("slice_tp_3d.png")
+    plt.savefig(f"{data_path}/slice_tp_3d.png")
 
     us = np.reshape(us, (nx, ny, nz))
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
@@ -418,7 +424,7 @@ if __name__ == "__main__":
     fig.colorbar(cax2, ax=ax[2])
     ax[2].invert_yaxis()
     ax[2].set_title("ts_z")
-    plt.savefig("slice_ts_3d.png")
+    plt.savefig(f"{data_path}/slice_ts_3d.png")
 
     grad_up = np.reshape(grad_up, (1, 3, nx, ny, nz))
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
@@ -434,7 +440,7 @@ if __name__ == "__main__":
     fig.colorbar(cax2, ax=ax[2])
     ax[2].invert_yaxis()
     ax[2].set_title("grad_tp_z")
-    plt.savefig("slice_grad_tp_3d.png")
+    plt.savefig(f"{data_path}/slice_grad_tp_3d.png")
 
     grad_us = np.reshape(grad_us, (1, 3, nx, ny, nz))
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
@@ -450,4 +456,4 @@ if __name__ == "__main__":
     fig.colorbar(cax2, ax=ax[2])
     ax[2].invert_yaxis()
     ax[2].set_title("grad_ts_z")
-    plt.savefig("slice_grad_ts_3d.png")
+    plt.savefig(f"{data_path}/slice_grad_ts_3d.png")

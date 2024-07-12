@@ -295,8 +295,13 @@ def init_eikonal2d(config):
     vp = np.tile(vp1d, (nr, 1))
     vs = np.tile(vs1d, (nr, 1))
 
+    # ir0 = np.floor(config["source_loc"][0] / h).astype(np.int64)
+    # iz0 = np.floor(config["source_loc"][1] / h).astype(np.int64)
+    ir0 = np.round(0 - rlim[0] / h).astype(np.int64)
+    iz0 = np.round(0 - zlim[0] / h).astype(np.int64)
     up = 1000 * np.ones((nr, nz))
-    up[0, 0] = 0.0
+    # up[0, 0] = 0.0
+    up[ir0, iz0] = 0.0
 
     up = eikonal_solve(up, vp, h)
     grad_up = np.gradient(up, h, edge_order=2)
@@ -304,7 +309,8 @@ def init_eikonal2d(config):
     grad_up = [x.ravel() for x in grad_up]
 
     us = 1000 * np.ones((nr, nz))
-    us[0, 0] = 0.0
+    # us[0, 0] = 0.0
+    us[ir0, iz0] = 0.0
 
     us = eikonal_solve(us, vs, h)
     grad_us = np.gradient(us, h, edge_order=2)
@@ -329,6 +335,12 @@ def init_eikonal2d(config):
 
 
 if __name__ == "__main__":
+
+    import os
+
+    data_path = "data"
+    if not os.path.exists(data_path):
+        os.makedirs(data_path, exist_ok=True)
 
     nr = 21
     nz = 21
@@ -406,14 +418,14 @@ if __name__ == "__main__":
     plt.pcolormesh(up[:, :])
     plt.gca().invert_yaxis()
     plt.colorbar()
-    plt.savefig("slice_tp_2d.png")
+    plt.savefig(f"{data_path}/slice_tp_2d.png")
 
     us = us.reshape((nr, nz))
     plt.figure()
     plt.pcolormesh(us[:, :])
     plt.gca().invert_yaxis()
     plt.colorbar()
-    plt.savefig("slice_ts_2d.png")
+    plt.savefig(f"{data_path}/slice_ts_2d.png")
 
     grad_up = [x.reshape((nr, nz)) for x in grad_up]
     fig, ax = plt.subplots(1, 2, figsize=(10, 5))
@@ -425,7 +437,7 @@ if __name__ == "__main__":
     fig.colorbar(cax1, ax=ax[1])
     ax[1].invert_yaxis()
     ax[1].set_title("grad_tp_z")
-    plt.savefig("slice_grad_tp_2d.png")
+    plt.savefig(f"{data_path}/slice_grad_tp_2d.png")
 
     grad_us = [x.reshape((nr, nz)) for x in grad_us]
     fig, ax = plt.subplots(1, 2, figsize=(10, 5))
@@ -437,4 +449,4 @@ if __name__ == "__main__":
     fig.colorbar(cax1, ax=ax[1])
     ax[1].invert_yaxis()
     ax[1].set_title("grad_ts_z")
-    plt.savefig("slice_grad_ts_2d.png")
+    plt.savefig(f"{data_path}/slice_grad_ts_2d.png")
