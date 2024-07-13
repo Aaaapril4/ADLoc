@@ -256,7 +256,7 @@ class RANSACRegressor(
             Interval(RealNotInt, 0, 1, closed="both"),
             None,
         ],
-        "residual_threshold": [Interval(Real, 0, None, closed="left"), None],
+        # "residual_threshold": [Interval(Real, 0, None, closed="left"), None],
         "is_data_valid": [callable, None],
         "is_model_valid": [callable, None],
         "max_trials": [
@@ -379,12 +379,14 @@ class RANSACRegressor(
             if y.ndim == 1:
                 loss_function = lambda y_true, y_pred: np.abs(y_true - y_pred)
             else:
-                loss_function = lambda y_true, y_pred: np.sum(np.abs(y_true - y_pred), axis=1)
+                # loss_function = lambda y_true, y_pred: np.sum(np.abs(y_true - y_pred), axis=1)
+                loss_function = lambda y_true, y_pred: np.abs(y_true - y_pred)  ## for time + amplitude
         elif self.loss == "squared_error":
             if y.ndim == 1:
                 loss_function = lambda y_true, y_pred: (y_true - y_pred) ** 2
             else:
-                loss_function = lambda y_true, y_pred: np.sum((y_true - y_pred) ** 2, axis=1)
+                # loss_function = lambda y_true, y_pred: np.sum((y_true - y_pred) ** 2, axis=1)
+                loss_function = lambda y_true, y_pred: (y_true - y_pred) ** 2  ## for time + amplitude
 
         elif callable(self.loss):
             loss_function = self.loss
@@ -456,6 +458,7 @@ class RANSACRegressor(
 
             # classify data into inliers and outliers
             inlier_mask_subset = residuals_subset <= residual_threshold
+            inlier_mask_subset = (inlier_mask_subset).all(axis=-1)  ## for time + amplitude
             n_inliers_subset = np.sum(inlier_mask_subset)
 
             # less inliers -> skip current random sample
@@ -542,6 +545,7 @@ class RANSACRegressor(
         y_pred = estimator.predict(X, **kwargs)
         residuals = loss_function(y, y_pred)
         inlier_mask = residuals <= residual_threshold
+        inlier_mask = inlier_mask.all(axis=-1)  ## for time + amplitude
         # self.estimator_ = estimator_best
         self.estimator_ = estimator
         self.inlier_mask_ = inlier_mask
