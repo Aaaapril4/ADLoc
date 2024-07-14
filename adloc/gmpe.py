@@ -1,12 +1,25 @@
 import numpy as np
 
 
-def calc_mag(data, event_loc, station_loc, weight, min=-2, max=8):
+def calc_mag(amp, event_loc, station_loc, weight, min=-2, max=8):
+    """
+    Calculate magnitude from amplitude and distance
+    Input:
+        amp: amplitude in log10(cm/s)
+        event_loc: event location (n, 3)
+        station_loc: station location (n, 3)
+        weight: weight for each observation (n,)
+        min: minimum magnitude
+        max: maximum magnitude
+    Output:
+        mag: magnitude
+    """
+
     dist = np.linalg.norm(event_loc - station_loc, axis=-1, keepdims=True)
     # mag_ = ( data - 2.48 + 2.76 * np.log10(dist) )
     ## Picozzi et al. (2018) A rapid response magnitude scale...
     c0, c1, c2, c3 = 1.08, 0.93, -0.015, -1.68
-    mag_ = (data - c0 - c3 * np.log10(np.maximum(dist, 0.1))) / c1 + 3.5
+    mag_ = (amp - c0 - c3 * np.log10(np.maximum(dist, 0.1))) / c1 + 3.5
     ## Atkinson, G. M. (2015). Ground-Motion Prediction Equation...
     # c0, c1, c2, c3, c4 = (-4.151, 1.762, -0.09509, -1.669, -0.0006)
     # mag_ = (data - c0 - c3*np.log10(dist))/c1
@@ -29,7 +42,7 @@ def calc_amp(mag, event_loc, station_loc):
         event_loc: event location (n, 3)
         station_loc: station location (n, 3)
     Output:
-        logA: log amplitude in log10(m/s)
+        logA: log amplitude in log10(cm/s)
     """
     dist = np.linalg.norm(event_loc - station_loc, axis=-1, keepdims=True)
     # logA = mag + 2.48 - 2.76 * np.log10(dist)

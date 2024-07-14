@@ -8,27 +8,16 @@ from tqdm import tqdm
 from ._ransac import RANSACRegressor
 
 
-def invert(
-    event_index,
-    picks_by_event,
-    estimator,
-    events,
-    stations,
-    config,
-    mask_idx,
-    mask,
-    error_idx,
-    error_s,
-    event_init=None,
-    lock=nullcontext(),
-):
+def invert(picks, stations, config, estimator, event_index, event_init):
     """
     Earthquake location for a single event using RANSAC.
     """
 
     def is_model_valid(estimator, X, y):
-        score = estimator.score(X, y)
-        return score > config["min_score"]
+        ## TODO: Implement a good way to check if the model is valid
+        # score = estimator.score(X, y)
+        # return score > config["min_score"]
+        return True
 
     def is_data_valid(X, y):
         """
@@ -41,79 +30,136 @@ def invert(
 
     MIN_PICKS = config["min_picks"]
     MIN_PICKS_RATIO = config["min_picks_ratio"]
-    MAX_RESIDUAL = config["max_residual_s"]
+    MAX_RESIDUAL = [config["max_residual_time"], config["max_residual_amplitude"]]
 
-    X = picks_by_event.merge(
+    X = picks.merge(
         stations[["x_km", "y_km", "z_km", "station_id", "station_term"]],
         # stations[["x_km", "y_km", "z_km", "station_id", "station_term_p", "station_term_s"]], ## Separate P and S station term
         on="station_id",
     )
     t0 = X["phase_time"].min()
-    if event_init is None:
-        event_init = np.array([[np.median(X["x_km"]), np.median(X["y_km"]), np.mean(config["zlim_km"]), 0.0]])
-    else:
+
+    if event_init is not None:
         event_init = np.array([[event_init[0], event_init[1], event_init[2], (event_init[3] - t0).total_seconds()]])
+    else:
+        event_init = np.array([[np.median(X["x_km"]), np.median(X["y_km"]), 5.0, 0.0]])
 
-    xstd = np.std(X["x_km"])
-    ystd = np.std(X["y_km"])
-    rstd = np.sqrt(xstd**2 + ystd**2)
+    # xstd = np.std(X["x_km"])
+    # ystd = np.std(X["y_km"])
+    # rstd = np.sqrt(xstd**2 + ystd**2)
 
-    X.rename(columns={"phase_type": "type", "phase_score": "score", "phase_time": "t_s"}, inplace=True)
+    X.rename(
+        columns={"phase_type": "type", "phase_score": "score", "phase_time": "t_s", "phase_amplitude": "amp"},
+        inplace=True,
+    )
     X["t_s"] = (X["t_s"] - t0).dt.total_seconds()
     X["t_s"] = X["t_s"] - X["station_term"]
     # X["t_s"] = X.apply(
     #     lambda x: x["t_s"] - x["station_term_p"] if x["type"] == 0 else x["t_s"] - x["station_term_s"], axis=1
     # ) ## Separate P and S station term
-    X = X[
-        [
-            "idx_sta",
-            "type",
-            "score",
-            "t_s",
-        ]
-    ]
+    # X = X[["idx_sta", "type", "score", "t_s", "amp"]]
     # X["type"] = X["type"].apply(lambda x: mapping_phase_type_int[x])
 
     estimator.set_params(**{"events": event_init})
+
     # ## Location using ADLoc
     # estimator.fit(X[["idx_sta", "type", "score"]].values, y=X["t_s"].values)
     # inlier_mask = np.ones(len(picks_by_event)).astype(bool)
 
     ## Location using RANSAC
-    num_picks = len(picks_by_event)
+    num_picks = len(X)
     reg = RANSACRegressor(
         estimator=estimator,
         random_state=0,
         min_samples=max(MIN_PICKS, int(MIN_PICKS_RATIO * num_picks)),
-        residual_threshold=MAX_RESIDUAL * (1.0 - np.exp(-rstd / 60.0)),  # not sure which one is better
+        # residual_threshold=MAX_RESIDUAL * (1.0 - np.exp(-rstd / 60.0)),  # not sure which one is better
+        residual_threshold=MAX_RESIDUAL,
         is_model_valid=is_model_valid,
         is_data_valid=is_data_valid,
     )
     try:
-        reg.fit(X[["idx_sta", "type", "score"]].values, X["t_s"].values)
+        reg.fit(X[["idx_sta", "type", "score", "amp"]].values, X[["t_s", "amp"]].values)
     except Exception as e:
-        return f"No valid model for event_index {event_index}."
+        print(f"No valid model for event_index {event_index}.")
+        picks["mask"] = 0
+        picks["residual_time"] = 0.0
+        picks["residual_amp"] = 0.0
+        return picks, None
+
     estimator = reg.estimator_
     inlier_mask = reg.inlier_mask_
 
     ## Predict travel time
-    tt = estimator.predict(X[["idx_sta", "type"]].values)
-    score = estimator.score(X[["idx_sta", "type", "score"]].values[inlier_mask], y=X["t_s"].values[inlier_mask])
+    output = estimator.predict(X[["idx_sta", "type"]].values)
+    if config["use_amplitude"]:
+        tt = output[:, 0]
+        amp = output[:, 1]
+    else:
+        tt = output
+    score = estimator.score(
+        X[["idx_sta", "type", "score", "amp"]].values[inlier_mask], y=X[["t_s", "amp"]].values[inlier_mask]
+    )
 
     if (np.sum(inlier_mask) > MIN_PICKS) and (score > config["min_score"]):
-        mean_residual_s = np.sum(np.abs(X["t_s"].values - tt) * inlier_mask) / np.sum(inlier_mask)
+        mean_residual_time = np.sum(np.abs(X["t_s"].values - tt) * inlier_mask) / np.sum(inlier_mask)
+        if config["use_amplitude"]:
+            mean_residual_amp = np.sum(np.abs(X["amp"].values - amp) * inlier_mask) / np.sum(inlier_mask)
+        else:
+            mean_residual_amp = 0.0
         x, y, z, t = estimator.events[0]
-        events.append(
-            [event_index, x, y, z, t0 + pd.Timedelta(t, unit="s"), score, mean_residual_s, np.sum(inlier_mask)]
-        )
+
+        event = {
+            "idx_eve": event_index,  ## inside adloc, idx_eve is used which starts from 0 to N events
+            "x_km": x,
+            "y_km": y,
+            "z_km": z,
+            "time": t0 + pd.Timedelta(t, unit="s"),
+            "adloc_score": score,
+            "adloc_residual_time": mean_residual_time,
+            "adloc_residual_amplitude": mean_residual_amp,
+            "num_picks": np.sum(inlier_mask),
+        }
+        event = pd.DataFrame([event])
     else:
         inlier_mask = np.zeros(len(inlier_mask), dtype=bool)
+        event = None
 
-    with lock:
-        error_idx.extend(picks_by_event.index.values)
-        error_s.extend(X["t_s"].values - tt)
-        mask_idx.extend(picks_by_event.index.values)
-        mask.extend(inlier_mask.astype(int))
+    picks["residual_time"] = X["t_s"].values - tt
+    if config["use_amplitude"]:
+        picks["residual_amp"] = X["amp"].values - amp
+    else:
+        picks["residual_amp"] = 0.0
+    picks["mask"] = inlier_mask.astype(int)
+
+    # ####################################### Debug #######################################
+    # import os
+
+    # import matplotlib.pyplot as plt
+
+    # print(f"{max(MIN_PICKS, int(MIN_PICKS_RATIO * num_picks))=}")
+    # print(f"{MAX_RESIDUAL=}")
+    # fig, ax = plt.subplots(1, 2, squeeze=False, figsize=(7, 4))
+    # event = estimator.events[0]
+    # X["dist"] = np.linalg.norm(X[["x_km", "y_km", "z_km"]].values - event[:3], axis=1)
+    # ax[0, 0].scatter(X["dist"], X["t_s"], c="r", s=10, label="Picks")
+    # ax[0, 0].scatter(X["dist"][~inlier_mask], X["t_s"][~inlier_mask], s=10, c="k", label="Noise")
+    # ax[0, 0].scatter(X["dist"][inlier_mask], tt[inlier_mask], c="g", s=30, marker="x", label="Predicted")
+    # ax[0, 0].set_xlabel("Distance (km)")
+    # ax[0, 0].set_ylabel("Time (s)")
+    # ax[0, 0].legend()
+    # ax[0, 1].scatter(np.log10(X["dist"]), X["amp"], c="r", s=10, label="Picks")
+    # ax[0, 1].scatter(np.log10(X["dist"][~inlier_mask]), X["amp"][~inlier_mask], s=10, c="k", label="Noise")
+    # ax[0, 1].scatter(np.log10(X["dist"][inlier_mask]), amp[inlier_mask], c="g", s=30, marker="x", label="Predicted")
+    # ax[0, 1].set_xlabel("Distance (km)")
+    # ax[0, 1].set_ylabel("Amplitude")
+    # if not os.path.exists("debug"):
+    #     os.makedirs("debug")
+    # fig.savefig(f"debug/event_{event_index}.png")
+    # plt.close(fig)
+    # raise
+    # ####################################### Debug #######################################
+
+    return picks, event
 
 
 def invert_location(picks, stations, config, estimator, events_init=None, iter=0):
@@ -123,65 +169,80 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
     else:
         NCPU = mp.cpu_count() - 1
 
-    with mp.Manager() as manager:
-        mask_idx = manager.list()
-        mask = manager.list()
-        error_idx = manager.list()
-        error_s = manager.list()
-        locations = manager.list()
-        lock = manager.Lock()
-        pbar = tqdm(total=len(picks.groupby("idx_eve")), desc=f"Iter {iter}")
-        threads = []
-        event_init = None
-        with mp.get_context("spawn").Pool(NCPU) as pool:
-            for event_index, picks_by_event in picks.groupby("idx_eve"):
-                if events_init is not None:
-                    event_int = events_init[events_init["idx_eve"] == event_index]
-                    if len(event_int) > 0:
-                        event_init = event_int[["x_km", "y_km", "z_km", "time"]].values[0]
-                    else:
-                        event_init = None
-                thread = pool.apply_async(
-                    invert,
-                    args=(
-                        event_index,
-                        picks_by_event,
-                        estimator,
-                        locations,
-                        stations,
-                        config,
-                        mask_idx,
-                        mask,
-                        error_idx,
-                        error_s,
-                        event_init,
-                        lock,
-                    ),
-                    callback=lambda x: pbar.update(),
-                )
-                threads.append(thread)
-            for thread in threads:
-                out = thread.get()
-                if out is not None:
-                    print(out)
-        mask_idx = list(mask_idx)
-        mask = list(mask)
-        error_idx = list(error_idx)
-        error_s = list(error_s)
-        locations = list(locations)
-        pbar.close()
+    jobs = []
+    events_inverted = []
+    picks_inverted = []
+    pbar = tqdm(total=len(picks.groupby("idx_eve")), desc=f"Iter {iter}")
+    with mp.get_context("spawn").Pool(NCPU) as pool:
+        for idx_eve, picks_by_event in picks.groupby("idx_eve"):
+            if events_init is not None:
+                event_init = events_init[events_init["idx_eve"] == idx_eve]
+                if len(event_init) > 0:
+                    event_init = event_init[["x_km", "y_km", "z_km", "time"]].values[0]
+                else:
+                    event_init = None
+            else:
+                event_init = None
 
-    picks.loc[mask_idx, "mask"] = mask
-    picks.loc[error_idx, "residual_s"] = error_s
+            # picks_, event_ = invert(picks_by_event, stations, config, estimator, idx_eve, event_init)
+            # if event_ is not None:
+            #     events_inverted.append(event_)
+            # picks_inverted.append(picks_)
+            # pbar.update()
 
-    locations = pd.DataFrame(
-        locations, columns=["idx_eve", "x_km", "y_km", "z_km", "time", "adloc_score", "adloc_residual_s", "num_picks"]
-    )
+            job = pool.apply_async(
+                invert,
+                (picks_by_event, stations, config, estimator, idx_eve, event_init),
+                callback=lambda _: pbar.update(),
+            )
+            jobs.append(job)
+
+        pool.close()
+        pool.join()
+
+        for job in jobs:
+            picks_, event_ = job.get()
+            if event_ is not None:
+                events_inverted.append(event_)
+            picks_inverted.append(picks_)
+
+    events_inverted = pd.concat(events_inverted, ignore_index=True)
+    picks_inverted = pd.concat(picks_inverted)
     if events_init is not None:
-        locations = locations.merge(events_init[["event_index", "idx_eve"]], on="idx_eve")
+        events_inverted = events_inverted.merge(events_init[["event_index", "idx_eve"]], on="idx_eve")
     else:
-        locations["event_index"] = locations["idx_eve"]
+        events_inverted["event_index"] = events_inverted["idx_eve"]
 
-    print(f"ADLoc using {len(picks[picks['mask'] == 1])} picks outof {len(picks)} picks")
+    print(f"ADLoc using {len(picks_inverted[picks_inverted['mask'] == 1])} picks outof {len(picks_inverted)} picks")
 
-    return picks, locations
+    return picks_inverted, events_inverted
+
+
+def invert_location_iter(picks, stations, config, estimator, events_init=None, iter=0):
+
+    events_inverted = []
+    picks_inverted = []
+
+    for idx_eve, picks_by_event in tqdm(picks.groupby("idx_eve"), desc=f"Iter {iter}"):
+        if events_init is not None:
+            event_init = events_init[events_init["idx_eve"] == idx_eve]
+            if len(event_init) > 0:
+                event_init = event_init[["x_km", "y_km", "z_km", "time"]].values[0]
+            else:
+                event_init = None
+
+        picks_, event_ = invert(picks_by_event, stations, config, estimator, idx_eve, event_init)
+
+        if event_ is not None:
+            events_inverted.append(event_)
+        picks_inverted.append(picks_)
+
+    events_inverted = pd.concat(events_inverted, ignore_index=True)
+    picks_inverted = pd.concat(picks_inverted)
+    if events_init is not None:
+        events_inverted = events_inverted.merge(events_init[["event_index", "idx_eve"]], on="idx_eve")
+    else:
+        events_inverted["event_index"] = events_inverted["idx_eve"]
+
+    print(f"ADLoc using {len(picks_inverted[picks_inverted['mask'] == 1])} picks outof {len(picks_inverted)} picks")
+    return picks_inverted, events_inverted

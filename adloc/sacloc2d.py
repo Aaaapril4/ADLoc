@@ -1,10 +1,11 @@
 # %%
 import numpy as np
 import scipy
-from _ransac import RANSACRegressor
-from eikonal2d import grad_traveltime, init_eikonal2d, traveltime
-from gmpe import calc_amp, calc_mag
 from sklearn.base import BaseEstimator
+
+from ._ransac import RANSACRegressor
+from .eikonal2d import grad_traveltime, init_eikonal2d, traveltime
+from .gmpe import calc_amp, calc_mag
 
 # from sklearn.linear_model import RANSACRegressor
 
