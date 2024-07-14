@@ -32,8 +32,10 @@ if __name__ == "__main__":
     # picks = pd.read_csv(os.path.join(data_path, "phasenet_plus_picks.csv"), parse_dates=["phase_time"])
     stations = pd.read_csv(os.path.join(data_path, "stations.csv"))
     stations["depth_km"] = -stations["elevation_m"] / 1000
-    if "station_term" not in stations.columns:
-        stations["station_term"] = 0.0
+    if "station_term_time" not in stations.columns:
+        stations["station_term_time"] = 0.0
+    if "station_term_amplitude" not in stations.columns:
+        stations["station_term_amplitude"] = 0.0
     result_path = f"results/{region}/"
     if not os.path.exists(result_path):
         os.makedirs(result_path)
@@ -151,11 +153,17 @@ if __name__ == "__main__":
     while iter < MAX_SST_ITER:
         # picks, events = invert_location_iter(picks, stations, config, estimator, events_init=events_init, iter=iter)
         picks, events = invert_location(picks, stations, config, estimator, events_init=events_init, iter=iter)
-        station_term = picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_time": "mean"}).reset_index()
-        stations["station_term"] += (
-            stations["idx_sta"].map(station_term.set_index("idx_sta")["residual_time"]).fillna(0)
+        # station_term = picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_time": "mean"}).reset_index()
+        station_term_time = picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_time": "mean"}).reset_index()
+        station_term_amp = (
+            picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_amplitude": "mean"}).reset_index()
         )
-
+        stations["station_term_time"] += (
+            stations["idx_sta"].map(station_term_time.set_index("idx_sta")["residual_time"]).fillna(0)
+        )
+        stations["station_term_amplitude"] += (
+            stations["idx_sta"].map(station_term_amp.set_index("idx_sta")["residual_amplitude"]).fillna(0)
+        )
         ## Separate P and S station term
         # station_term = (
         #     picks[picks["mask"] == 1.0].groupby(["idx_sta", "phase_type"]).agg({"residual_s": "mean"}).reset_index()
@@ -171,15 +179,15 @@ if __name__ == "__main__":
         #     .fillna(0)
         # )
 
-        plotting(stations, figure_path, config, picks, events_init, events, station_term, iter=iter)
+        plotting(stations, figure_path, config, picks, events_init, events, iter=iter)
 
         if iter == 0:
             MIN_SST_S = (
-                np.mean(np.abs(station_term["residual_time"])) / 10.0
+                np.mean(np.abs(station_term_time["residual_time"])) / 10.0
             )  # break at 10% of the initial station term
             print(f"MIN_SST (s): {MIN_SST_S}")
-        if np.mean(np.abs(station_term["residual_time"])) < MIN_SST_S:
-            print(f"Mean station term: {np.mean(np.abs(station_term['residual_time']))}")
+        if np.mean(np.abs(station_term_time["residual_time"])) < MIN_SST_S:
+            print(f"Mean station term: {np.mean(np.abs(station_term_time['residual_time']))}")
             # break
         iter += 1
 

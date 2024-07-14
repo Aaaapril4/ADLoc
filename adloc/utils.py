@@ -33,7 +33,7 @@ def invert(picks, stations, config, estimator, event_index, event_init):
     MAX_RESIDUAL = [config["max_residual_time"], config["max_residual_amplitude"]]
 
     X = picks.merge(
-        stations[["x_km", "y_km", "z_km", "station_id", "station_term"]],
+        stations[["x_km", "y_km", "z_km", "station_id", "station_term_time", "station_term_amplitude"]],
         # stations[["x_km", "y_km", "z_km", "station_id", "station_term_p", "station_term_s"]], ## Separate P and S station term
         on="station_id",
     )
@@ -53,7 +53,8 @@ def invert(picks, stations, config, estimator, event_index, event_init):
         inplace=True,
     )
     X["t_s"] = (X["t_s"] - t0).dt.total_seconds()
-    X["t_s"] = X["t_s"] - X["station_term"]
+    X["t_s"] = X["t_s"] - X["station_term_time"]
+    X["amp"] = X["amp"] - X["station_term_amplitude"]
     # X["t_s"] = X.apply(
     #     lambda x: x["t_s"] - x["station_term_p"] if x["type"] == 0 else x["t_s"] - x["station_term_s"], axis=1
     # ) ## Separate P and S station term
@@ -83,7 +84,7 @@ def invert(picks, stations, config, estimator, event_index, event_init):
         print(f"No valid model for event_index {event_index}.")
         picks["mask"] = 0
         picks["residual_time"] = 0.0
-        picks["residual_amp"] = 0.0
+        picks["residual_amplitude"] = 0.0
         return picks, None
 
     estimator = reg.estimator_
@@ -126,9 +127,9 @@ def invert(picks, stations, config, estimator, event_index, event_init):
 
     picks["residual_time"] = X["t_s"].values - tt
     if config["use_amplitude"]:
-        picks["residual_amp"] = X["amp"].values - amp
+        picks["residual_amplitude"] = X["amp"].values - amp
     else:
-        picks["residual_amp"] = 0.0
+        picks["residual_amplitude"] = 0.0
     picks["mask"] = inlier_mask.astype(int)
 
     # ####################################### Debug #######################################

@@ -5,17 +5,21 @@ import numpy as np
 
 
 # %%
-def plotting(stations, figure_path, config, picks, events_init, events, station_term, iter=0):
-    fig, ax = plt.subplots(2, 2, figsize=(10, 8))
+def plotting(stations, figure_path, config, picks, events_init, events, iter=0):
+    fig, ax = plt.subplots(2, 3, figsize=(15, 8))
     ax[0, 0].hist(events["adloc_score"], bins=30, edgecolor="white")
     ax[0, 0].set_yscale("log")
     ax[0, 0].set_title("ADLoc score")
     ax[0, 1].hist(events["num_picks"], bins=30, edgecolor="white")
     ax[0, 1].set_title("Number of picks")
+    ax[0, 2].hist(events["adloc_residual_amplitude"], bins=30, edgecolor="white")
+    ax[0, 2].set_title("Event residual (log10 cm/s)")
     ax[1, 0].hist(events["adloc_residual_time"], bins=30, edgecolor="white")
     ax[1, 0].set_title("Event residual (s)")
     ax[1, 1].hist(picks[picks["mask"] == 1.0]["residual_time"], bins=30, edgecolor="white")
     ax[1, 1].set_title("Pick residual (s)")
+    ax[1, 2].hist(picks[picks["mask"] == 1.0]["residual_amplitude"], bins=30, edgecolor="white")
+    ax[1, 2].set_title("Pick residual (log10 cm/s)")
     plt.savefig(os.path.join(figure_path, f"hist_{iter}.png"), bbox_inches="tight", dpi=300)
 
     xmin, xmax = config["xlim_km"]
@@ -23,7 +27,7 @@ def plotting(stations, figure_path, config, picks, events_init, events, station_
     zmin, zmax = config["zlim_km"]
     vmin, vmax = config["zlim_km"]
     alpha = 0.8
-    fig, ax = plt.subplots(2, 2, figsize=(12, 8), gridspec_kw={"height_ratios": [2, 1]})
+    fig, ax = plt.subplots(2, 3, figsize=(18, 8), gridspec_kw={"height_ratios": [2, 1]})
     # fig, ax = plt.subplots(2, 3, figsize=(15, 8), gridspec_kw={"height_ratios": [2, 1]})
     im = ax[0, 0].scatter(
         events["x_km"],
@@ -49,7 +53,7 @@ def plotting(stations, figure_path, config, picks, events_init, events, station_
     im = ax[0, 1].scatter(
         stations["x_km"],
         stations["y_km"],
-        c=stations["station_term"],
+        c=stations["station_term_time"],
         cmap="viridis_r",
         s=100,
         marker="^",
@@ -62,7 +66,25 @@ def plotting(stations, figure_path, config, picks, events_init, events, station_
     ax[0, 1].set_ylabel("Y (km)")
     cbar = fig.colorbar(im, ax=ax[0, 1])
     cbar.set_label("Residual (s)")
-    ax[0, 1].set_title(f"Station term: {np.mean(np.abs(stations['station_term'].values)):.4f} s")
+    ax[0, 1].set_title(f"Station term: {np.mean(np.abs(stations['station_term_time'].values)):.4f} s")
+
+    im = ax[0, 2].scatter(
+        stations["x_km"],
+        stations["y_km"],
+        c=stations["station_term_amplitude"],
+        cmap="viridis_r",
+        s=100,
+        marker="^",
+        alpha=alpha,
+    )
+    ax[0, 2].set_aspect("equal", "box")
+    ax[0, 2].set_xlim([xmin, xmax])
+    ax[0, 2].set_ylim([ymin, ymax])
+    ax[0, 2].set_xlabel("X (km)")
+    ax[0, 2].set_ylabel("Y (km)")
+    cbar = fig.colorbar(im, ax=ax[0, 2])
+    cbar.set_label("Residual (log10 cm/s)")
+    ax[0, 2].set_title(f"Station term: {np.mean(np.abs(stations['station_term_amplitude'].values)):.4f} s")
 
     ## Separate P and S station term
     # im = ax[0, 1].scatter(
