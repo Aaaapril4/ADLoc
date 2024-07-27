@@ -128,9 +128,6 @@ class PhaseDataset(Dataset):
         events,
         stations,
         batch_size=1000,
-        double_difference=False,
-        min_pair_dist=10,
-        max_pair_num=500,
         config=None,
         rank=0,
         world_size=1,
@@ -139,10 +136,7 @@ class PhaseDataset(Dataset):
         self.events = events
         self.stations = stations
         self.config = config
-        self.double_difference = double_difference
         self.batch_size = batch_size
-        self.min_pair_dist = min_pair_dist
-        self.max_pair_num = max_pair_num
 
         # preprocess
         self.picks_by_event = picks.groupby("idx_eve")
@@ -185,11 +179,9 @@ class PhaseDataset(Dataset):
             idx_eve = torch.tensor(idx_eve, dtype=torch.long)
             phase_weight = torch.tensor(phase_score, dtype=torch.float32)
             phase_time = torch.tensor(phase_time, dtype=torch.float32)
-            phase_type = torch.tensor(phase_type, dtype=torch.long)
+            phase_type = np.array(phase_type)
 
             meta[i] = {
-                # "event_index": event_index,
-                # "station_index": station_index,
                 "idx_eve": idx_eve,
                 "idx_sta": idx_sta,
                 "phase_time": phase_time,
@@ -245,7 +237,7 @@ class PhaseDatasetDD(Dataset):
         return {
             "idx_eve": torch.tensor(idx_eve, dtype=torch.long),
             "idx_sta": torch.tensor(idx_sta, dtype=torch.long),
-            "phase_type": torch.tensor(phase_type, dtype=torch.long),
+            "phase_type": phase_type,
             "phase_weight": torch.tensor(phase_weight, dtype=torch.float32),
             "phase_time": torch.tensor(phase_time, dtype=torch.float32),
         }

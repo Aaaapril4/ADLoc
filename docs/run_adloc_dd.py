@@ -85,9 +85,17 @@ if __name__ == "__main__":
 
     # %%
     ## Automatic region; you can also specify a region
-    lon0 = stations["longitude"].median()
-    lat0 = stations["latitude"].median()
-    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
+    # lon0 = stations["longitude"].median()
+    # lat0 = stations["latitude"].median()
+    # proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
+    lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
+    lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
+    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0} +lat_ts={lat0} +units=km")
+
+    stations["x_km"], stations["y_km"] = proj(stations["longitude"], stations["latitude"])
+    stations["z_km"] = stations["depth_km"]
+    events["x_km"], events["y_km"] = proj(events["longitude"], events["latitude"])
+    events["z_km"] = events["depth_km"]
 
     ## set up the config; you can also specify the region manually
     if ("xlim_km" not in config) or ("ylim_km" not in config) or ("zlim_km" not in config):

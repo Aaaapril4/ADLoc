@@ -179,10 +179,14 @@ def traveltime(event_index, station_index, phase_type, events, stations, eikonal
 
         tt = np.zeros(len(phase_type), dtype=np.float32)
 
-        # p_index = phase_type == "P"
-        # s_index = phase_type == "S"
-        p_index = phase_type == 0
-        s_index = phase_type == 1
+        if isinstance(phase_type[0], str):
+            p_index = phase_type == "P"
+            s_index = phase_type == "S"
+        elif isinstance(phase_type[0], int):
+            p_index = phase_type == 0
+            s_index = phase_type == 1
+        else:
+            raise ValueError("phase_type must be either P/S or 0/1")
 
         if len(tt[p_index]) > 0:
             tt[p_index] = _interp(eikonal["up"], r[p_index], z[p_index], rgrid0, zgrid0, nr, nz, h)
