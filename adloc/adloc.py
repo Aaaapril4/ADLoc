@@ -73,28 +73,26 @@ class TravelTime(nn.Module):
         self.event_time = nn.Embedding(num_event, 1)
         self.station_loc = nn.Embedding(num_station, 3)
         self.station_dt = nn.Embedding(num_station, 1)  # same statioin term for P and S
-        self.station_loc.weight = torch.nn.Parameter(torch.tensor(station_loc, dtype=dtype), requires_grad=False)
-        if station_dt is not None:
-            self.station_dt.weight = torch.nn.Parameter(torch.tensor(station_dt, dtype=dtype), requires_grad=False)
-        else:
-            self.station_dt.weight = torch.nn.Parameter(torch.zeros(num_station, 1, dtype=dtype), requires_grad=False)
 
+        ## check initialization
+        station_loc = torch.tensor(station_loc, dtype=dtype)
+        if station_dt is not None:
+            station_dt = torch.tensor(station_dt, dtype=dtype)
+        else:
+            station_dt = torch.zeros(num_station, 1, dtype=dtype)
         if event_loc is not None:
-            self.event_loc.weight = torch.nn.Parameter(
-                torch.tensor(event_loc, dtype=dtype).contiguous(), requires_grad=True
-            )
+            event_loc = torch.tensor(event_loc, dtype=dtype).contiguous()
         else:
-            self.event_loc.weight = torch.nn.Parameter(
-                torch.zeros(num_event, 3, dtype=dtype).contiguous(), requires_grad=True
-            )
+            event_loc = torch.zeros(num_event, 3, dtype=dtype).contiguous()
         if event_time is not None:
-            self.event_time.weight = torch.nn.Parameter(
-                torch.tensor(event_time, dtype=dtype).contiguous(), requires_grad=True
-            )
+            event_time = torch.tensor(event_time, dtype=dtype).contiguous()
         else:
-            self.event_time.weight = torch.nn.Parameter(
-                torch.zeros(num_event, 1, dtype=dtype).contiguous(), requires_grad=True
-            )
+            event_time = torch.zeros(num_event, 1, dtype=dtype).contiguous()
+
+        self.station_loc.weight = torch.nn.Parameter(station_loc, requires_grad=False)
+        self.station_dt.weight = torch.nn.Parameter(station_dt, requires_grad=False)
+        self.event_loc.weight = torch.nn.Parameter(event_loc, requires_grad=True)
+        self.event_time.weight = torch.nn.Parameter(event_time, requires_grad=True)
 
         self.velocity = [velocity["P"], velocity["S"]]
         self.eikonal = eikonal
@@ -112,6 +110,7 @@ class TravelTime(nn.Module):
             self.h = self.eikonal["h"]
 
     def calc_time(self, event_loc, station_loc, phase_type):
+
         if self.eikonal is None:
             dist = torch.linalg.norm(event_loc - station_loc, axis=-1, keepdim=True)
             tt = dist / self.velocity[phase_type]
@@ -158,13 +157,12 @@ class TravelTime(nn.Module):
         loss = 0.0
         pred_time = torch.zeros(len(phase_type), dtype=torch.float32)
         resisudal = torch.zeros(len(phase_type), dtype=torch.float32)
-        station_index = torch.tensor(station_index, dtype=torch.long)
-        event_index = torch.tensor(event_index, dtype=torch.long)
-        phase_time = torch.tensor(phase_time, dtype=torch.float32)
-        phase_weight = torch.tensor(phase_weight, dtype=torch.float32)
 
         # for type in [0, 1]:  # phase_type: 0 for P, 1 for S
         for type in np.unique(phase_type):
+
+            if len(phase_type[phase_type == type]) == 0:
+                continue
 
             station_index_ = station_index[phase_type == type]  # (nb,)
             event_index_ = event_index[phase_type == type]  # (nb,)
@@ -192,7 +190,8 @@ class TravelTime(nn.Module):
 
 
 # %%
-class TravelTimeDD(nn.Module):
+class TravelTimeDD(TravelTime):
+
     def __init__(
         self,
         num_event,
@@ -205,49 +204,21 @@ class TravelTimeDD(nn.Module):
         eikonal=None,
         zlim=[0, 30],
         dtype=torch.float32,
+        grad_type="auto",
     ):
-        super().__init__()
-        self.num_event = num_event
-        self.event_loc = nn.Embedding(num_event, 3)
-        self.event_time = nn.Embedding(num_event, 1)
-        self.station_loc = nn.Embedding(num_station, 3)
-        self.station_dt = nn.Embedding(num_station, 1)  # same statioin term for P and S
-        self.station_loc.weight = torch.nn.Parameter(torch.tensor(station_loc, dtype=dtype), requires_grad=False)
-        if station_dt is not None:
-            self.station_dt.weight = torch.nn.Parameter(torch.tensor(station_dt, dtype=dtype), requires_grad=False)
-        else:
-            self.station_dt.weight = torch.nn.Parameter(torch.zeros(num_station, 1, dtype=dtype), requires_grad=False)
-
-        if event_loc is not None:
-            self.event_loc.weight = torch.nn.Parameter(
-                torch.tensor(event_loc, dtype=dtype).contiguous(), requires_grad=True
-            )
-        else:
-            self.event_loc.weight = torch.nn.Parameter(
-                torch.zeros(num_event, 3, dtype=dtype).contiguous(), requires_grad=True
-            )
-        if event_time is not None:
-            self.event_time.weight = torch.nn.Parameter(
-                torch.tensor(event_time, dtype=dtype).contiguous(), requires_grad=True
-            )
-        else:
-            self.event_time.weight = torch.nn.Parameter(
-                torch.zeros(num_event, 1, dtype=dtype).contiguous(), requires_grad=True
-            )
-
-        self.velocity = [velocity["P"], velocity["S"]]
-        self.eikonal = eikonal
-        self.zlim = zlim
-        if self.eikonal is not None:
-            self.timetable_p = torch.tensor(
-                np.reshape(self.eikonal["up"], self.eikonal["nr"], self.eikonal["nz"]), dtype=dtype
-            )
-            self.timetable_s = torch.tensor(
-                np.reshape(self.eikonal["us"], self.eikonal["nr"], self.eikonal["nz"]), dtype=dtype
-            )
-            self.rgrid = self.eikonal["rgrid"]
-            self.zgrid = self.eikonal["zgrid"]
-            self.h = self.eikonal["h"]
+        super().__init__(
+            num_event,
+            num_station,
+            station_loc,
+            station_dt=station_dt,
+            event_loc=event_loc,
+            event_time=event_time,
+            velocity=velocity,
+            eikonal=eikonal,
+            zlim=zlim,
+            dtype=dtype,
+            grad_type=grad_type,
+        )
 
     def calc_time(self, event_loc, station_loc, phase_type):
         if self.eikonal is None:
@@ -263,8 +234,11 @@ class TravelTimeDD(nn.Module):
             event_loc = event_loc.view(nb1 * ne1, nc1)
             station_loc = station_loc.view(nb1 * ne1, nc2)
 
-            r = torch.linalg.norm(event_loc[:, :2] - station_loc[:, :2], axis=-1, keepdims=False)  ## nb, 2 (pair), 3
+            # r = torch.linalg.norm(event_loc[:, :2] - station_loc[:, :2], axis=-1, keepdims=False)  ## nb, 2 (pair), 3
+            x = event_loc[:, 0] - station_loc[:, 0]
+            y = event_loc[:, 1] - station_loc[:, 1]
             z = event_loc[:, 2] - station_loc[:, 2]
+            r = torch.sqrt(x**2 + y**2)
 
             # timetable = self.eikonal["up"] if phase_type == 0 else self.eikonal["us"]
             # timetable_grad = self.eikonal["grad_up"] if phase_type == 0 else self.eikonal["grad_us"]
@@ -277,9 +251,9 @@ class TravelTimeDD(nn.Module):
             # h = self.eikonal["h"]
             # tt = CalcTravelTime.apply(r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid0, zgrid0, nr, nz, h)
 
-            if phase_type == 0:
+            if phase_type in [0, "P"]:
                 timetable = self.timetable_p
-            elif phase_type == 1:
+            elif phase_type in [1, "S"]:
                 timetable = self.timetable_s
             else:
                 raise ValueError("phase_type should be 0 or 1. for P and S, respectively.")
@@ -300,15 +274,18 @@ class TravelTimeDD(nn.Module):
     ):
         loss = 0.0
         pred_time = torch.zeros(len(phase_type), dtype=torch.float32)
-        for type in [0, 1]:  # phase_type: 0 for P, 1 for S
+
+        # for type in [0, 1]:  # phase_type: 0 for P, 1 for S
+        for type in np.unique(phase_type):
+
             if len(phase_type[phase_type == type]) == 0:
                 continue
+
             station_index_ = station_index[phase_type == type]  # (nb,)
             event_index_ = event_index[phase_type == type]  # (nb,)
             phase_weight_ = phase_weight[phase_type == type]  # (nb,)
 
             station_loc_ = self.station_loc(station_index_)  # (nb, 3)
-            # station_dt_ = self.station_dt(station_index_)[:, [type]]  # (nb, 1)
             station_dt_ = self.station_dt(station_index_)  # (nb, 1)
 
             event_loc_ = self.event_loc(event_index_)  # (nb, 2, 3)
@@ -546,11 +523,11 @@ if __name__ == "__main__":
 
     # %%
     output = traveltime(
-        picks["station_index"].values,
-        picks["event_index"].values,
+        torch.tensor(picks["station_index"].values, dtype=torch.long),
+        torch.tensor(picks["event_index"].values, dtype=torch.long),
         picks["phase_type"].values,
-        picks["phase_time"].values,
-        picks["phase_score"].values,
+        torch.tensor(picks["phase_time"].values, dtype=torch.float32),
+        torch.tensor(picks["phase_score"].values, dtype=torch.float32),
     )
     loss = output["loss"]
 
@@ -566,16 +543,22 @@ if __name__ == "__main__":
     optimizer = optim.LBFGS(params=params, max_iter=1000, line_search_fn="strong_wolfe")
     print("Initial loss:", loss.item())
 
+    picks_station_index = torch.tensor(picks["station_index"].values, dtype=torch.long)
+    picks_event_index = torch.tensor(picks["event_index"].values, dtype=torch.long)
+    picks_phase_type = picks["phase_type"].values
+    picks_phase_time = torch.tensor(picks["phase_time"].values, dtype=torch.float32)
+    picks_phase_score = torch.tensor(picks["phase_score"].values, dtype=torch.float32)
+
     def closure():
 
         optimizer.zero_grad()
 
         output = traveltime(
-            picks["station_index"].values,
-            picks["event_index"].values,
-            picks["phase_type"].values,
-            picks["phase_time"].values,
-            picks["phase_score"].values,
+            picks_station_index,
+            picks_event_index,
+            picks_phase_type,
+            picks_phase_time,
+            picks_phase_score,
         )
         loss = output["loss"]
         loss.backward()
@@ -588,11 +571,11 @@ if __name__ == "__main__":
     optimizer.step(closure)
 
     output = traveltime(
-        picks["station_index"].values,
-        picks["event_index"].values,
-        picks["phase_type"].values,
-        picks["phase_time"].values,
-        picks["phase_score"].values,
+        picks_station_index,
+        picks_event_index,
+        picks_phase_type,
+        picks_phase_time,
+        picks_phase_score,
     )
     loss = output["loss"]
     print("Final loss:", loss.item())

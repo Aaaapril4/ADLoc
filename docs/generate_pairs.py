@@ -1,5 +1,6 @@
 # %%
 import argparse
+import json
 import multiprocessing as mp
 import os
 import pickle
@@ -100,8 +101,10 @@ if __name__ == "__main__":
         picks = picks.drop("idx_sta", axis=1)
 
     # %%
-    stations["idx_sta"] = stations.index  # reindex in case the index does not start from 0 or is not continuous
-    events["idx_eve"] = events.index  # reindex in case the index does not start from 0 or is not continuous
+    stations["idx_sta"] = np.arange(
+        len(stations)
+    )  # reindex in case the index does not start from 0 or is not continuous
+    events["idx_eve"] = np.arange(len(events))  # reindex in case the index does not start from 0 or is not continuous
 
     picks = picks.merge(events[["event_index", "idx_eve"]], on="event_index")
     picks = picks.merge(stations[["station_id", "idx_sta"]], on="station_id")
@@ -208,7 +211,7 @@ if __name__ == "__main__":
             ]
         )
         pairs_array = np.memmap(
-            os.path.join(result_path, "adloc_dt.dat"),
+            os.path.join(result_path, "pair_dt.dat"),
             mode="w+",
             shape=(len(dd_time),),
             dtype=dtypes,
@@ -219,11 +222,11 @@ if __name__ == "__main__":
         pairs_array["phase_type"] = phase_type
         pairs_array["phase_score"] = phase_score
         pairs_array["dd_time"] = dd_time
-        with open(os.path.join(result_path, "adloc_dtypes.pkl"), "wb") as f:
+        with open(os.path.join(result_path, "pair_dtypes.pkl"), "wb") as f:
             pickle.dump(dtypes, f)
 
-        events.to_csv(os.path.join(result_path, "adloc_events.csv"), index=False)
-        stations.to_csv(os.path.join(result_path, "adloc_stations.csv"), index=False)
-        picks.to_csv(os.path.join(result_path, "adloc_picks.csv"), index=False)
+        events.to_csv(os.path.join(result_path, "pair_events.csv"), index=False)
+        stations.to_csv(os.path.join(result_path, "pair_stations.csv"), index=False)
+        picks.to_csv(os.path.join(result_path, "pair_picks.csv"), index=False)
 
 # %%

@@ -5,6 +5,101 @@ import numpy as np
 
 
 # %%
+def plotting_dd(events_new, stations, config, figure_path, events_old, iter=0):
+
+    vmin = min(events_new["z_km"].min(), events_old["z_km"].min())
+    vmax = max(events_new["z_km"].max(), events_old["z_km"].max())
+    xmin = min(stations["x_km"].min(), events_old["x_km"].min())
+    xmax = max(stations["x_km"].max(), events_old["x_km"].max())
+    ymin = min(stations["y_km"].min(), events_old["y_km"].min())
+    ymax = max(stations["y_km"].max(), events_old["y_km"].max())
+    zmin, zmax = config["zlim_km"]
+
+    fig, ax = plt.subplots(2, 2, figsize=(10, 8), gridspec_kw={"height_ratios": [2, 1]})
+    im = ax[0, 0].scatter(
+        events_old["x_km"],
+        events_old["y_km"],
+        c=events_old["z_km"],
+        cmap="viridis_r",
+        s=1,
+        marker="o",
+        vmin=vmin,
+        vmax=vmax,
+        alpha=0.5,
+    )
+    ax[0, 0].set_xlim([xmin, xmax])
+    ax[0, 0].set_ylim([ymin, ymax])
+    cbar = fig.colorbar(im, ax=ax[0, 0])
+    cbar.set_label("Depth (km)")
+    ax[0, 0].set_title(f"ADLoc: {len(events_old)} events")
+
+    im = ax[0, 1].scatter(
+        events_new["x_km"],
+        events_new["y_km"],
+        c=events_new["z_km"],
+        cmap="viridis_r",
+        s=1,
+        marker="o",
+        vmin=vmin,
+        vmax=vmax,
+        alpha=0.5,
+    )
+    ax[0, 1].set_xlim([xmin, xmax])
+    ax[0, 1].set_ylim([ymin, ymax])
+    cbar = fig.colorbar(im, ax=ax[0, 1])
+    cbar.set_label("Depth (km)")
+    ax[0, 1].set_title(f"ADLoc DD: {len(events_new)} events")
+
+    # im = ax[1, 0].scatter(
+    #     events_new["x_km"],
+    #     events_new["z_km"],
+    #     c=events_new["z_km"],
+    #     cmap="viridis_r",
+    #     s=1,
+    #     marker="o",
+    #     vmin=vmin,
+    #     vmax=vmax,
+    # )
+    # ax[1, 0].set_xlim([xmin, xmax])
+    # ax[1, 0].set_ylim([zmax, zmin])
+    # cbar = fig.colorbar(im, ax=ax[1, 0])
+    # cbar.set_label("Depth (km)")
+
+    im = ax[1, 0].scatter(
+        events_old["y_km"],
+        events_old["z_km"],
+        c=events_old["z_km"],
+        cmap="viridis_r",
+        s=1,
+        marker="o",
+        vmin=vmin,
+        vmax=vmax,
+        alpha=0.5,
+    )
+    ax[1, 0].set_xlim([ymin, ymax])
+    ax[1, 0].set_ylim([zmax, zmin])
+    cbar = fig.colorbar(im, ax=ax[1, 0])
+    cbar.set_label("Depth (km)")
+
+    im = ax[1, 1].scatter(
+        events_new["y_km"],
+        events_new["z_km"],
+        c=events_new["z_km"],
+        cmap="viridis_r",
+        s=1,
+        marker="o",
+        vmin=vmin,
+        vmax=vmax,
+        alpha=0.5,
+    )
+    ax[1, 1].set_xlim([ymin, ymax])
+    ax[1, 1].set_ylim([zmax, zmin])
+    cbar = fig.colorbar(im, ax=ax[1, 1])
+    cbar.set_label("Depth (km)")
+    plt.savefig(os.path.join(figure_path, f"location_{iter}.png"), bbox_inches="tight", dpi=300)
+
+
+# %%
 def plotting(stations, figure_path, config, picks, events_init, events, iter=0):
     fig, ax = plt.subplots(2, 3, figsize=(15, 8))
     ax[0, 0].hist(events["adloc_score"], bins=30, edgecolor="white")

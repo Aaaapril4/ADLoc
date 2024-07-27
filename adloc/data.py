@@ -132,6 +132,8 @@ class PhaseDataset(Dataset):
         min_pair_dist=10,
         max_pair_num=500,
         config=None,
+        rank=0,
+        world_size=1,
     ):
         self.picks = picks
         self.events = events
@@ -144,7 +146,9 @@ class PhaseDataset(Dataset):
 
         # preprocess
         self.picks_by_event = picks.groupby("idx_eve")
-        self.event_index_batch = np.array_split(self.events["idx_eve"], (len(self.events) - 1) // self.batch_size + 1)
+        self.event_index_batch = np.array_split(self.events["idx_eve"], (len(self.events) - 1) // self.batch_size + 1)[
+            rank::world_size
+        ]
         self.read_data()
 
     def __len__(self):
@@ -205,6 +209,8 @@ class PhaseDatasetDD(Dataset):
         stations,
         batch_size=1000,
         config=None,
+        rank=0,
+        world_size=1,
     ):
         self.pairs = pairs
         self.picks = picks
@@ -213,10 +219,12 @@ class PhaseDatasetDD(Dataset):
         self.config = config
         self.batch_size = batch_size
 
-        self.idx_batch = np.array_split(np.arange(len(self.pairs)), (len(self.pairs) - 1) // self.batch_size + 1)
+        self.idx_batch = np.array_split(np.arange(len(self.pairs)), (len(self.pairs) - 1) // self.batch_size + 1)[
+            rank::world_size
+        ]
 
         print(f"Generated {len(self.pairs)} pairs")
-        print(f"Split into {len(self.idx_batch)} batches of size {self.batch_size}")
+        print(f"Split into {len(self.idx_batch)} batches of size {self.batch_size} at rank {rank}/{world_size}")
 
     def __len__(self):
         return len(self.idx_batch)
