@@ -146,19 +146,19 @@ class PhaseDataset(Dataset):
 
         # preprocess
         self.picks_by_event = picks.groupby("idx_eve")
-        self.event_index_batch = np.array_split(self.events["idx_eve"], (len(self.events) - 1) // self.batch_size + 1)[
+        self.idx_eve_batch = np.array_split(self.events["idx_eve"], (len(self.events) - 1) // self.batch_size + 1)[
             rank::world_size
         ]
         self.read_data()
 
     def __len__(self):
-        return len(self.event_index_batch)
+        return len(self.idx_eve_batch)
 
     def read_data(self):
         meta = {}
-        for i, index_batch in enumerate(self.event_index_batch):
-            event_index = []
-            station_index = []
+        for i, index_batch in enumerate(self.idx_eve_batch):
+            idx_eve = []
+            idx_sta = []
             phase_score = []
             phase_time = []
             phase_type = []
@@ -170,26 +170,28 @@ class PhaseDataset(Dataset):
                 phase_time.append(group["travel_time"].values)
                 phase_score.append(group["phase_score"].values)
                 phase_type.extend(group["phase_type"].values.tolist())
-                event_index.extend(group["idx_eve"].values.tolist())
-                station_index.append(group["idx_sta"].values.tolist())
+                idx_eve.extend(group["idx_eve"].values.tolist())
+                idx_sta.append(group["idx_sta"].values.tolist())
 
             phase_time = np.concatenate(phase_time)
             phase_score = np.concatenate(phase_score)
             # phase_type = np.array([{"P": 0, "S": 1}[x.upper()] for x in phase_type])
             # if ("P" in phase_type) and ("S" in phase_type):
             #     phase_type = np.array([{"P": 0, "S": 1}[x] for x in phase_type])
-            event_index = np.array(event_index)
-            station_index = np.concatenate(station_index)
+            idx_eve = np.array(idx_eve)
+            idx_sta = np.concatenate(idx_sta)
 
-            station_index = torch.tensor(station_index, dtype=torch.long)
-            event_index = torch.tensor(event_index, dtype=torch.long)
+            idx_sta = torch.tensor(idx_sta, dtype=torch.long)
+            idx_eve = torch.tensor(idx_eve, dtype=torch.long)
             phase_weight = torch.tensor(phase_score, dtype=torch.float32)
             phase_time = torch.tensor(phase_time, dtype=torch.float32)
             phase_type = torch.tensor(phase_type, dtype=torch.long)
 
             meta[i] = {
-                "event_index": event_index,
-                "station_index": station_index,
+                # "event_index": event_index,
+                # "station_index": station_index,
+                "idx_eve": idx_eve,
+                "idx_sta": idx_sta,
                 "phase_time": phase_time,
                 "phase_weight": phase_weight,
                 "phase_type": phase_type,

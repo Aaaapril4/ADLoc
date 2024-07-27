@@ -17,7 +17,7 @@ from pyproj import Proj
 from adloc.eikonal2d import init_eikonal2d
 from adloc.sacloc2d import ADLoc
 from adloc.utils import invert_location, invert_location_iter
-from utils import plotting
+from utils import plotting_ransac
 
 # %%
 if __name__ == "__main__":
@@ -179,7 +179,7 @@ if __name__ == "__main__":
         #     .fillna(0)
         # )
 
-        plotting(stations, figure_path, config, picks, events_init, events, iter=iter)
+        plotting_ransac(stations, figure_path, config, picks, events_init, events, iter=iter)
 
         if iter == 0:
             MIN_SST_S = (

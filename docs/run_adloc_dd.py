@@ -136,6 +136,7 @@ if __name__ == "__main__":
 
     # %%
     phase_dataset = PhaseDatasetDD(pairs, picks, events, stations, rank=ddp_local_rank, world_size=ddp_world_size)
+    data_loader = DataLoader(phase_dataset, batch_size=None, shuffle=False, num_workers=0)
 
     # %%
     num_event = len(events)
@@ -158,7 +159,7 @@ if __name__ == "__main__":
 
     if ddp_local_rank == 0:
         print(
-            f"Dataset: {len(picks)} picks, {len(events)} events, {len(stations)} stations, {len(phase_dataset)} batches"
+            f"Dataset: {len(picks)} picks, {len(events)} events, {len(stations)} stations, {len(data_loader)} batches"
         )
 
     ## invert loss
@@ -171,21 +172,16 @@ if __name__ == "__main__":
         # for meta in tqdm(phase_dataset, desc=f"Epoch {i}"):
         if ddp_local_rank == 0:
             print(f"Epoch {i}: ", end="")
-        for meta in phase_dataset:
+        for meta in data_loader:
             if ddp_local_rank == 0:
                 print(".", end="")
-            station_index = meta["idx_sta"]
-            event_index = meta["idx_eve"]
-            phase_time = meta["phase_time"]
-            phase_type = meta["phase_type"]
-            phase_weight = meta["phase_weight"]
 
             loss_ = travel_time(
-                station_index,
-                event_index,
-                phase_type,
-                phase_time,
-                phase_weight,
+                meta["idx_sta"],
+                meta["idx_eve"],
+                meta["phase_type"],
+                meta["phase_time"],
+                meta["phase_weight"],
             )["loss"]
 
             loss_.backward()
@@ -231,18 +227,13 @@ if __name__ == "__main__":
     #     for meta in phase_dataset:
     #         if ddp_local_rank == 0:
     #             print(".", end="")
-    #         station_index = meta["idx_sta"]
-    #         event_index = meta["idx_eve"]
-    #         phase_time = meta["phase_time"]
-    #         phase_type = meta["phase_type"]
-    #         phase_weight = meta["phase_weight"]
 
     #         loss_ = travel_time(
-    #             station_index,
-    #             event_index,
-    #             phase_type,
-    #             phase_time,
-    #             phase_weight,
+    #              meta["idx_sta"],
+    #             meta["idx_eve"],
+    #             meta["phase_type"],
+    #             meta["phase_time"],
+    #             meta["phase_weight"],
     #         )["loss"]
     #         loss_.backward()
 

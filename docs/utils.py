@@ -4,6 +4,85 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+# # %%
+def plotting(stations, figure_path, config, picks, events_old, locations, station_term=None, suffix=""):
+
+    vmin = min(locations["z_km"].min(), events_old["depth_km"].min())
+    vmax = max(locations["z_km"].max(), events_old["depth_km"].max())
+    # xmin, xmax = stations["x_km"].min(), stations["x_km"].max()
+    # ymin, ymax = stations["y_km"].min(), stations["y_km"].max()
+    xmin = min(stations["x_km"].min(), locations["x_km"].min())
+    xmax = max(stations["x_km"].max(), locations["x_km"].max())
+    ymin = min(stations["y_km"].min(), locations["y_km"].min())
+    ymax = max(stations["y_km"].max(), locations["y_km"].max())
+    zmin, zmax = config["zlim_km"]
+
+    fig, ax = plt.subplots(2, 2, figsize=(10, 8), gridspec_kw={"height_ratios": [2, 1]})
+    # fig, ax = plt.subplots(2, 3, figsize=(15, 8), gridspec_kw={"height_ratios": [2, 1]})
+    im = ax[0, 0].scatter(
+        locations["x_km"],
+        locations["y_km"],
+        c=locations["z_km"],
+        cmap="viridis_r",
+        s=1,
+        marker="o",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    ax[0, 0].set_xlim([xmin, xmax])
+    ax[0, 0].set_ylim([ymin, ymax])
+    cbar = fig.colorbar(im, ax=ax[0, 0])
+    cbar.set_label("Depth (km)")
+    ax[0, 0].set_title(f"ADLoc: {len(locations)} events")
+
+    im = ax[0, 1].scatter(
+        stations["x_km"],
+        stations["y_km"],
+        c=stations["station_term"],
+        cmap="viridis_r",
+        s=100,
+        marker="^",
+        alpha=0.5,
+    )
+    ax[0, 1].set_xlim([xmin, xmax])
+    ax[0, 1].set_ylim([ymin, ymax])
+    cbar = fig.colorbar(im, ax=ax[0, 1])
+    cbar.set_label("Residual (s)")
+    ax[0, 1].set_title(f"Station term: {np.mean(np.abs(stations['station_term'].values)):.4f} s")
+
+    im = ax[1, 0].scatter(
+        locations["x_km"],
+        locations["z_km"],
+        c=locations["z_km"],
+        cmap="viridis_r",
+        s=1,
+        marker="o",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    ax[1, 0].set_xlim([xmin, xmax])
+    ax[1, 0].set_ylim([zmax, zmin])
+    cbar = fig.colorbar(im, ax=ax[1, 0])
+    cbar.set_label("Depth (km)")
+
+    im = ax[1, 1].scatter(
+        locations["y_km"],
+        locations["z_km"],
+        c=locations["z_km"],
+        cmap="viridis_r",
+        s=1,
+        marker="o",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    ax[1, 1].set_xlim([ymin, ymax])
+    ax[1, 1].set_ylim([zmax, zmin])
+    cbar = fig.colorbar(im, ax=ax[1, 1])
+    cbar.set_label("Depth (km)")
+    plt.savefig(os.path.join(figure_path, f"location_{suffix}.png"), bbox_inches="tight", dpi=300)
+    plt.close(fig)
+
+
 # %%
 def plotting_dd(events_new, stations, config, figure_path, events_old, iter=0):
 
@@ -100,7 +179,7 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, iter=0):
 
 
 # %%
-def plotting(stations, figure_path, config, picks, events_init, events, iter=0):
+def plotting_ransac(stations, figure_path, config, picks, events_init, events, iter=0):
     fig, ax = plt.subplots(2, 3, figsize=(15, 8))
     ax[0, 0].hist(events["adloc_score"], bins=30, edgecolor="white")
     ax[0, 0].set_yscale("log")
