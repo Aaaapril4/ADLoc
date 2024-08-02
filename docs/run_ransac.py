@@ -26,11 +26,57 @@ if __name__ == "__main__":
     # region = "synthetic"
     region = "ridgecrest"
     data_path = f"test_data/{region}/"
+
+    ##################################### GaMMA Paper DATA #####################################
+    os.system(
+        f"[ -f {data_path}/events_osf.csv ] || curl -L https://osf.io/download/945dq/ -o {data_path}/events_osf.csv"
+    )
+    os.system(
+        f"[ -f {data_path}/picks_osf.csv ] || curl -L https://osf.io/download/gwxtn/ -o {data_path}/picks_osf.csv"
+    )
+    os.system(
+        f"[ -f {data_path}/stations_osf.csv ] || curl -L https://osf.io/download/km97w/ -o {data_path}/stations_osf.csv"
+    )
+    picks_file = os.path.join(data_path, "picks_osf.csv")
+    events_file = os.path.join(data_path, "events_osf.csv")
+    stations_file = os.path.join(data_path, "stations_osf.csv")
+
+    picks = pd.read_csv(picks_file, sep="\t")
+    picks.rename(
+        {
+            "id": "station_id",
+            "timestamp": "phase_time",
+            "type": "phase_type",
+            "prob": "phase_score",
+            "amp": "phase_amplitude",
+            "event_idx": "event_index",
+        },
+        axis=1,
+        inplace=True,
+    )
+    picks["phase_type"] = picks["phase_type"].str.upper()
+    picks["phase_time"] = pd.to_datetime(picks["phase_time"])
+    events_init = pd.read_csv(events_file, sep="\t")
+    events_init.rename({"event_idx": "event_index"}, axis=1, inplace=True)
+    events_init["depth_km"] = events_init["depth(m)"] / 1000.0
+    events_init["time"] = pd.to_datetime(events_init["time"])
+
+    picks = picks[picks["phase_time"] < pd.to_datetime("2019-07-05 00:00:00")]
+    events_init = events_init[events_init["time"] < pd.to_datetime("2019-07-05 00:00:00")]
+
+    stations = pd.read_csv(stations_file, sep="\t")
+    stations.rename({"station": "station_id", "elevation(m)": "elevation_m"}, axis=1, inplace=True)
+    ##################################### GaMMA Paper DATA #####################################
+
+    # picks_file = os.path.join(data_path, "gamma_picks.csv")
+    # events_file = os.path.join(data_path, "gamma_events.csv")
+    # stations_file = os.path.join(data_path, "stations.csv")
+
     config = json.load(open(os.path.join(data_path, "config.json")))
-    picks = pd.read_csv(os.path.join(data_path, "gamma_picks.csv"), parse_dates=["phase_time"])
-    events_init = pd.read_csv(os.path.join(data_path, "gamma_events.csv"), parse_dates=["time"])
+    # picks = pd.read_csv(picks_file, parse_dates=["phase_time"])
+    # events_init = pd.read_csv(events_file, parse_dates=["time"])
     # picks = pd.read_csv(os.path.join(data_path, "phasenet_plus_picks.csv"), parse_dates=["phase_time"])
-    stations = pd.read_csv(os.path.join(data_path, "stations.csv"))
+    # stations = pd.read_csv(stations_file)
     stations["depth_km"] = -stations["elevation_m"] / 1000
     if "station_term_time" not in stations.columns:
         stations["station_term_time"] = 0.0

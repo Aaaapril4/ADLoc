@@ -17,7 +17,8 @@ def invert(picks, stations, config, estimator, event_index, event_init):
         ## TODO: Implement a good way to check if the model is valid
         # score = estimator.score(X, y)
         # return score > config["min_score"]
-        return True
+        # events [[x, y, z, t]]
+        return estimator.events[0][2] > 1.0  # depth > 1.0 km
 
     def is_data_valid(X, y):
         """
@@ -82,6 +83,9 @@ def invert(picks, stations, config, estimator, event_index, event_init):
         reg.fit(X[["idx_sta", "type", "score", "amp"]].values, X[["t_s", "amp"]].values)
     except Exception as e:
         print(f"No valid model for event_index {event_index}.")
+        message = "RANSAC could not find a valid consensus set."
+        if str(e)[: len(message)] != message:
+            print(e)
         picks["mask"] = 0
         picks["residual_time"] = 0.0
         picks["residual_amplitude"] = 0.0

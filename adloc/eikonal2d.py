@@ -179,10 +179,10 @@ def traveltime(event_index, station_index, phase_type, events, stations, eikonal
 
         tt = np.zeros(len(phase_type), dtype=np.float32)
 
-        if isinstance(phase_type[0], str):
+        if isinstance(phase_type[0].item(), str):
             p_index = phase_type == "P"
             s_index = phase_type == "S"
-        elif isinstance(phase_type[0], int):
+        elif isinstance(phase_type[0].item(), int):
             p_index = phase_type == 0
             s_index = phase_type == 1
         else:
