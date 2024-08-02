@@ -61,8 +61,8 @@ if __name__ == "__main__":
     events_init["depth_km"] = events_init["depth(m)"] / 1000.0
     events_init["time"] = pd.to_datetime(events_init["time"])
 
-    picks = picks[picks["phase_time"] < pd.to_datetime("2019-07-05 00:00:00")]
-    events_init = events_init[events_init["time"] < pd.to_datetime("2019-07-05 00:00:00")]
+    # picks = picks[picks["phase_time"] < pd.to_datetime("2019-07-05 00:00:00")]
+    # events_init = events_init[events_init["time"] < pd.to_datetime("2019-07-05 00:00:00")]
 
     stations = pd.read_csv(stations_file, sep="\t")
     stations.rename({"station": "station_id", "elevation(m)": "elevation_m"}, axis=1, inplace=True)

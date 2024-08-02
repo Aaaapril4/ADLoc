@@ -195,11 +195,14 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, i
     ax[1, 2].hist(picks[picks["mask"] == 1.0]["residual_amplitude"], bins=30, edgecolor="white")
     ax[1, 2].set_title("Pick residual (log10 cm/s)")
     plt.savefig(os.path.join(figure_path, f"hist_{iter}.png"), bbox_inches="tight", dpi=300)
+    plt.close(fig)
 
     xmin, xmax = config["xlim_km"]
     ymin, ymax = config["ylim_km"]
     zmin, zmax = config["zlim_km"]
     vmin, vmax = config["zlim_km"]
+    events = events.sort_values("time", ascending=True)
+    s = max(0.1, min(10, 5000 / len(events)))
     alpha = 0.8
     fig, ax = plt.subplots(2, 3, figsize=(18, 8), gridspec_kw={"height_ratios": [2, 1]})
     # fig, ax = plt.subplots(2, 3, figsize=(15, 8), gridspec_kw={"height_ratios": [2, 1]})
@@ -208,11 +211,12 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, i
         events["y_km"],
         c=events["z_km"],
         cmap="viridis_r",
-        s=1,
+        s=s,
         marker="o",
         vmin=vmin,
         vmax=vmax,
         alpha=alpha,
+        linewidth=0.,
     )
     # set ratio 1:1
     ax[0, 0].set_aspect("equal", "box")
@@ -296,11 +300,12 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, i
         events["z_km"],
         c=events["z_km"],
         cmap="viridis_r",
-        s=1,
+        s=s,
         marker="o",
         vmin=vmin,
         vmax=vmax,
         alpha=alpha,
+        linewidth=0.,
     )
     # ax[1, 0].set_aspect("equal", "box")
     ax[1, 0].set_xlim([xmin, xmax])
@@ -315,11 +320,12 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, i
         events["z_km"],
         c=events["z_km"],
         cmap="viridis_r",
-        s=1,
+        s=s,
         marker="o",
         vmin=vmin,
         vmax=vmax,
         alpha=alpha,
+        linewidth=0.,
     )
     # ax[1, 1].set_aspect("equal", "box")
     ax[1, 1].set_xlim([ymin, ymax])

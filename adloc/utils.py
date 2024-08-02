@@ -172,7 +172,7 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
     if "ncpu" in config:
         NCPU = config["ncpu"]
     else:
-        NCPU = mp.cpu_count() - 1
+        NCPU = min(32, mp.cpu_count() - 1)
 
     jobs = []
     events_inverted = []
