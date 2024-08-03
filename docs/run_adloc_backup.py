@@ -13,8 +13,6 @@ from matplotlib import pyplot as plt
 from pyproj import Proj
 from sklearn.neighbors import NearestNeighbors
 from torch import nn
-from torch.distributed import init_process_group
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
@@ -26,27 +24,110 @@ from utils import plotting
 torch.manual_seed(0)
 np.random.seed(0)
 
-if __name__ == "__main__":
 
-    # %%
-    EPOCHS = 100
-    MAX_SST_ITER = 10
+def get_args_parser(add_help=True):
+    import argparse
 
-    # %%
-    region = "synthetic"
-    # region = "ridgecrest"
-    data_path = f"test_data/{region}"
-    result_path = f"results/{region}"
-    if not os.path.exists(result_path):
-        os.makedirs(result_path)
-    figure_path = f"figures/{region}/"
-    if not os.path.exists(figure_path):
-        os.makedirs(figure_path)
+    parser = argparse.ArgumentParser(description="PyTorch Detection Training", add_help=add_help)
+    parser.add_argument("-dd", "--double_difference", action="store_true", help="Use double difference")
+    parser.add_argument("--eikonal", action="store_true", help="Use eikonal")
+    parser.add_argument("--dd_weight", default=1.0, type=float, help="weight for double difference")
+    parser.add_argument("--min_pair_dist", default=20.0, type=float, help="minimum distance between pairs")
+    parser.add_argument("--max_time_res", default=0.5, type=float, help="maximum time residual")
+    parser.add_argument("--config", default="test_data/synthetic/config.json", type=str, help="config file")
+    parser.add_argument("--stations", type=str, default="test_data/synthetic/stations.csv", help="station json")
+    parser.add_argument("--picks", type=str, default="test_data/synthetic/picks.csv", help="picks csv")
+    parser.add_argument("--events", type=str, default="test_data/synthetic/events.csv", help="events csv")
+    parser.add_argument("--result_path", type=str, default="results/synthetic", help="result path")
+    parser.add_argument("--figure_path", type=str, default="figures/synthetic", help="result path")
+    # parser.add_argument("--config", default="test_data/ridgecrest/config.json", type=str, help="config file")
+    # parser.add_argument("--stations", type=str, default="test_data/ridgecrest/stations.csv", help="station json")
+    # parser.add_argument("--picks", type=str, default="test_data/ridgecrest/gamma_picks.csv", help="picks csv")
+    # parser.add_argument("--events", type=str, default="test_data/ridgecrest/gamma_events.csv", help="events csv")
+    # parser.add_argument("--result_path", type=str, default="results/ridgecrest", help="result path")
+    # parser.add_argument("--figure_path", type=str, default="figures/ridgecrest", help="result path")
+    parser.add_argument("--bootstrap", default=0, type=int, help="bootstrap")
 
-    picks_file = os.path.join(data_path, "picks.csv")
-    events_file = os.path.join(data_path, "events.csv")
-    stations_file = os.path.join(data_path, "stations.csv")
-    config_file = os.path.join(data_path, "config.json")
+    parser.add_argument("--device", default="cuda", type=str, help="device (Use cuda or cpu Default: cuda)")
+    parser.add_argument(
+        "-b", "--batch_size", default=2, type=int, help="images per gpu, the total batch size is $NGPU x batch_size"
+    )
+    parser.add_argument("--epochs", default=1000, type=int, metavar="N", help="number of total epochs to run")
+    parser.add_argument(
+        "-j", "--workers", default=0, type=int, metavar="N", help="number of data loading workers (default: 4)"
+    )
+    parser.add_argument("--opt", default="lbfgs", type=str, help="optimizer")
+    parser.add_argument(
+        "--lr",
+        default=0.02,
+        type=float,
+        help="initial learning rate, 0.02 is the default value for training on 8 gpus and 2 images_per_gpu",
+    )
+    parser.add_argument(
+        "--wd",
+        "--weight_decay",
+        default=1e-4,
+        type=float,
+        metavar="W",
+        help="weight decay (default: 1e-4)",
+        dest="weight_decay",
+    )
+    parser.add_argument(
+        "--lr-scheduler", default="multisteplr", type=str, help="name of lr scheduler (default: multisteplr)"
+    )
+    parser.add_argument(
+        "--lr-step-size", default=8, type=int, help="decrease lr every step-size epochs (multisteplr scheduler only)"
+    )
+    parser.add_argument(
+        "--lr-steps",
+        default=[16, 22],
+        nargs="+",
+        type=int,
+        help="decrease lr every step-size epochs (multisteplr scheduler only)",
+    )
+    parser.add_argument(
+        "--lr-gamma", default=0.1, type=float, help="decrease lr by a factor of lr-gamma (multisteplr scheduler only)"
+    )
+
+    # distributed training parameters
+    parser.add_argument("--world-size", default=1, type=int, help="number of distributed processes")
+    parser.add_argument("--dist-url", default="env://", type=str, help="url used to set up distributed training")
+
+    # Mixed precision training parameters
+    parser.add_argument("--amp", action="store_true", help="Use torch.cuda.amp for mixed precision training")
+
+    return parser.parse_args()
+
+
+def main(args):
+    if not os.path.exists(args.result_path):
+        os.makedirs(args.result_path)
+    if not os.path.exists(args.figure_path):
+        os.makedirs(args.figure_path)
+
+    with open(args.config, "r") as fp:
+        config = json.load(fp)
+
+    vp = 6.0
+    vs = vp / 1.73
+    eikonal = None
+
+    if args.eikonal:
+        ## Eikonal for 1D velocity model
+        zz = [0.0, 5.5, 16.0, 32.0]
+        vp = [5.5, 5.5, 6.7, 7.8]
+        vp_vs_ratio = 1.73
+        vs = [v / vp_vs_ratio for v in vp]
+        h = 0.3
+        vel = {"Z": zz, "P": vp, "S": vs}
+        config["eikonal"] = {
+            "vel": vel,
+            "h": h,
+            "xlim_km": config["xlim_km"],
+            "ylim_km": config["ylim_km"],
+            "zlim_km": config["zlim_km"],
+        }
+        eikonal = init_eikonal2d(config["eikonal"])
 
     # %% JSON format
     # with open(args.stations, "r") as fp:
@@ -54,67 +135,31 @@ if __name__ == "__main__":
     # stations = pd.DataFrame.from_dict(stations, orient="index")
     # stations["station_id"] = stations.index
     # %% CSV format
-    stations = pd.read_csv(stations_file)
-    picks = pd.read_csv(picks_file, parse_dates=["phase_time"])
-    events = pd.read_csv(events_file, parse_dates=["time"])
-    config = json.load(open(config_file))
+    stations = pd.read_csv(args.stations)
+    picks = pd.read_csv(args.picks, parse_dates=["phase_time"])
+    events = pd.read_csv(args.events, parse_dates=["time"])
 
     # %%
-    ## Automatic region; you can also specify a region
-    # lon0 = stations["longitude"].median()
-    # lat0 = stations["latitude"].median()
-    # proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
     lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
     lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
     proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0} +lat_ts={lat0} +units=km")
-
     if "depth_km" not in stations:
         stations["depth_km"] = -stations["elevation_m"] / 1000
     if "station_term" not in stations:
         stations["station_term"] = 0.0
-    events["x_km"], events["y_km"] = proj(events["longitude"], events["latitude"])
-    events["z_km"] = events["depth_km"]
-    stations["x_km"], stations["y_km"] = proj(stations["longitude"], stations["latitude"])
-    stations["z_km"] = stations["depth_km"]
-
-    if ("xlim_km" not in config) or ("ylim_km" not in config) or ("zlim_km" not in config):
-        xmin, ymin = proj(config["minlongitude"], config["minlatitude"])
-        xmax, ymax = proj(config["maxlongitude"], config["maxlatitude"])
-        zmin = stations["z_km"].min()
-        zmax = 20
-        config = {}
-        config["xlim_km"] = (xmin, xmax)
-        config["ylim_km"] = (ymin, ymax)
-        config["zlim_km"] = (zmin, zmax)
+    mapping_int = {"P": 0, "S": 1}
+    if ("P" in picks["phase_type"].values) or ("S" in picks["phase_type"].values):
+        picks["phase_type"] = picks["phase_type"].apply(lambda x: mapping_int[x])
 
     # %%
-    mapping_phase_type_int = {"P": 0, "S": 1}
-    config["vel"] = {"P": 6.0, "S": 6.0 / 1.73}
-    config["eikonal"] = None
-
-    ## Eikonal for 1D velocity model
-    zz = [0.0, 5.5, 16.0, 32.0]
-    vp = [5.5, 5.5, 6.7, 7.8]
-    vp_vs_ratio = 1.73
-    vs = [v / vp_vs_ratio for v in vp]
-    h = 0.3
-    vel = {"Z": zz, "P": vp, "S": vs}
-    config["eikonal"] = {
-        "vel": vel,
-        "h": h,
-        "xlim_km": config["xlim_km"],
-        "ylim_km": config["ylim_km"],
-        "zlim_km": config["zlim_km"],
-    }
-    config["eikonal"] = init_eikonal2d(config["eikonal"])
-
-    # %%
-    config["bfgs_bounds"] = (
-        (config["xlim_km"][0] - 1, config["xlim_km"][1] + 1),  # x
-        (config["ylim_km"][0] - 1, config["ylim_km"][1] + 1),  # y
-        (0, config["zlim_km"][1] + 1),
-        (None, None),  # t
+    stations[["x_km", "y_km"]] = stations.apply(
+        lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
     )
+    stations["z_km"] = stations["depth_km"]
+    events[["x_km", "y_km"]] = events.apply(
+        lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
+    )
+    events["z_km"] = events["depth_km"]
 
     # %% reindex in case the index does not start from 0 or is not continuous
     stations["idx_sta"] = np.arange(len(stations))
@@ -138,12 +183,7 @@ if __name__ == "__main__":
     # %%
     events_init = events.copy()
 
-    phase_dataset = PhaseDataset(
-        picks,
-        events,
-        stations,
-        config=config,
-    )
+    phase_dataset = PhaseDataset(picks, events, stations, config=args)
     data_loader = DataLoader(phase_dataset, batch_size=None, shuffle=False, num_workers=0)
 
     # %%
@@ -157,17 +197,15 @@ if __name__ == "__main__":
         event_loc=events[["x_km", "y_km", "z_km"]].values,
         # event_time=event_time,
         velocity={"P": vp, "S": vs},
-        eikonal=config["eikonal"],
+        eikonal=eikonal,
     )
 
     # %% Conventional location
-    print(
-        f"Dataset: {len(picks)} picks, {len(events)} events, {len(stations)} stations, {len(phase_dataset)} batches"
-    )
+    print(f"Dataset: {len(picks)} picks, {len(events)} events, {len(stations)} stations, {len(phase_dataset)} batches")
     print(f"============================ Basic location ============================")
 
     optimizer = optim.Adam(params=travel_time.parameters(), lr=1.0)
-    for i in range(EPOCHS):
+    for i in range(args.epochs):
         optimizer.zero_grad()
 
         prev_loss = 0
@@ -183,16 +221,15 @@ if __name__ == "__main__":
             loss_.backward()
             loss += loss_
 
-        if i % 10 == 0:
-            print(f"Epoch = {i}, Loss = {loss:.3f}")
         if abs(loss - prev_loss) < 1e-3:
+            print(f"Loss (Adam):  {loss}")
             break
         prev_loss = loss
 
         optimizer.step()
 
-
-    print(f"Loss (Adam):  {loss}")
+        if i % 10 == 0:
+            print(f"Epoch = {i}, Loss = {loss:.3f}")
 
     # optimizer = optim.LBFGS(params=travel_time.parameters(), max_iter=1000, line_search_fn="strong_wolfe", lr=1.0)
 
@@ -213,8 +250,6 @@ if __name__ == "__main__":
     #             phase_weight,
     #         )["loss"]
     #         loss_.backward()
-    #         if ddp:
-    #             dist.all_reduce(loss_, op=dist.ReduceOp.SUM)
     #         loss += loss_
 
     #     # print(f"Loss (LBFGS):  {loss}")
@@ -236,21 +271,20 @@ if __name__ == "__main__":
     )
     events["depth_km"] = events["z_km"]
     events.to_csv(
-        f"{result_path}/adloc_events.csv", index=False, float_format="%.5f", date_format="%Y-%m-%dT%H:%M:%S.%f"
+        f"{args.result_path}/adloc_events.csv", index=False, float_format="%.5f", date_format="%Y-%m-%dT%H:%M:%S.%f"
     )
 
-    plotting(stations, figure_path, config, picks, events, events, suffix="basic")
+    plotting(stations, args.figure_path, config, picks, events, events, suffix="basic")
 
     # %% Location with SST (station static term)
     print(f"============================ Location with SST ============================")
-
+    MAX_SST_ITER = 10
     idx_sta = torch.tensor(picks["idx_sta"].values, dtype=torch.long)
     idx_eve = torch.tensor(picks["idx_eve"].values, dtype=torch.long)
-    phase_type = picks["phase_type"].values
+    phase_type = torch.tensor(picks["phase_type"].values, dtype=torch.long)
     phase_time = torch.tensor(picks["travel_time"].values, dtype=torch.float32)
     phase_weight = torch.tensor(picks["phase_score"].values, dtype=torch.float32)
     weighted_mean = lambda x, w: np.sum(x * w) / np.sum(w)
-
     for i in range(MAX_SST_ITER):
         with torch.inference_mode():
             picks["residual_s"] = (
@@ -262,15 +296,13 @@ if __name__ == "__main__":
             .apply(lambda x: weighted_mean(x["residual_s"], x["phase_score"]))
             .reset_index(name="residual_s")
         )
-        stations["station_term"] += (
-            stations["idx_sta"].map(station_term.set_index("idx_sta")["residual_s"]).fillna(0)
+        stations["station_term"] += stations["idx_sta"].map(station_term.set_index("idx_sta")["residual_s"]).fillna(0)
+        travel_time.station_dt.weight.data = torch.tensor(stations["station_term"].values, dtype=torch.float32).view(
+            -1, 1
         )
-        travel_time.station_dt.weight.data = torch.tensor(
-            stations["station_term"].values, dtype=torch.float32
-        ).view(-1, 1)
 
         optimizer = optim.Adam(params=travel_time.parameters(), lr=1.0)
-        for j in range(EPOCHS):
+        for j in range(args.epochs):
             optimizer.zero_grad()
 
             prev_loss = 0
@@ -287,15 +319,16 @@ if __name__ == "__main__":
                 loss_.backward()
                 loss += loss_
 
-            if j % 10 == 0:
-                print(f"Epoch = {j}, Loss = {loss:.3f}")
             if abs(loss - prev_loss) < 1e-3:
+                print(f"Loss (Adam):  {loss}")
                 break
             prev_loss = loss
 
             optimizer.step()
 
-        print(f"Loss (Adam):  {loss}")
+            if j % 10 == 0:
+                print(f"SST Iter = {i}, Epoch = {j}, Loss = {loss:.3f}")
+
         invert_event_loc = travel_time.event_loc.weight.clone().detach().numpy()
         invert_event_time = travel_time.event_time.weight.clone().detach().numpy()
 
@@ -308,9 +341,9 @@ if __name__ == "__main__":
             lambda x: pd.Series(proj(x["x_km"], x["y_km"], inverse=True)), axis=1
         )
         events["depth_km"] = events["z_km"]
-        plotting(stations, figure_path, config, picks, events, events, suffix=f"sst_{i}")
+        plotting(stations, args.figure_path, config, picks, events, events, suffix=f"sst_{i}")
 
-    plotting(stations, figure_path, config, picks, events, events, suffix="sst")
+    plotting(stations, args.figure_path, config, picks, events, events, suffix="sst")
 
     # %% Location with grid search
     print(f"============================ Location with grid search ============================")
@@ -338,6 +371,7 @@ if __name__ == "__main__":
         idx_sta = np.tile(idx_sta, num_grid)
         phase_type = np.tile(phase_type, num_grid)
         station_dt_ = stations.iloc[idx_sta]["station_term"].values
+
         event_loc0 = event_loc_ - np.array([0, 0, np.round(event_loc_[2])])
         # event_loc0 = event_loc_ - np.array([0, 0, event_loc_[2]])
         event_time0 = event_time_
@@ -350,7 +384,7 @@ if __name__ == "__main__":
                 phase_type,
                 search_grid + event_loc0,
                 station_loc,
-                eikonal=config["eikonal"],
+                eikonal=eikonal,
             )
         )
         tt = np.reshape(tt, (num_grid, num_picks))
@@ -362,8 +396,6 @@ if __name__ == "__main__":
         event_time_gs.append(np.mean(dt, axis=-1)[idx] + event_time0)
 
         # tt = np.reshape(tt, (nx, ny, nz, num_picks))
-        # dt = np.reshape(dt, (nx, ny, nz, num_picks))
-        # dt = np.sum(np.abs(dt) * phase_weight, axis=-1) / np.sum(phase_weight)
         # tmp_loc = search_grid[np.argmin(dt)]
         # tmp_x = np.linspace(-5, 5, nx)
         # tmp_y = np.linspace(-5, 5, ny)
@@ -396,10 +428,16 @@ if __name__ == "__main__":
     )
     events["depth_km"] = events["z_km"]
     events.to_csv(
-        f"{result_path}/adloc_events_grid_search.csv",
+        f"{args.result_path}/adloc_events_grid_search.csv",
         index=False,
         float_format="%.5f",
         date_format="%Y-%m-%dT%H:%M:%S.%f",
     )
 
-    plotting(stations, figure_path, config, picks, events, events, suffix="gridsearch")
+    plotting(stations, args.figure_path, config, picks, events, events, suffix="gridsearch")
+
+
+if __name__ == "__main__":
+    args = get_args_parser()
+
+    main(args)
