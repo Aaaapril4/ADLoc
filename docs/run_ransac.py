@@ -90,6 +90,10 @@ if __name__ == "__main__":
     stations = pd.read_csv(stations_file, sep="\t")
     stations.rename({"station": "station_id", "elevation(m)": "elevation_m"}, axis=1, inplace=True)
 
+    picks.to_csv(os.path.join(data_path, "gamma_picks.csv"), index=False)
+    events.to_csv(os.path.join(data_path, "gamma_events.csv"), index=False)
+    stations.to_csv(os.path.join(data_path, "gamma_stations.csv"), index=False)
+
     config = {
         "minlatitude": 35.205,
         "maxlatitude": 36.205,

@@ -103,7 +103,7 @@ if __name__ == "__main__":
 
     # picks_file = os.path.join(data_path, "gamma_picks.csv")
     # events_file = os.path.join(data_path, "gamma_events.csv")
-    # stations_file = os.path.join(data_path, "stations.csv")
+    # stations_file = os.path.join(data_path, "gamma_stations.csv")
 
     picks_file = os.path.join(result_path, "ransac_picks_sst.csv")
     events_file = os.path.join(result_path, "ransac_events_sst.csv")
@@ -290,11 +290,13 @@ if __name__ == "__main__":
 
             loss += loss_
 
+        # torch.nn.utils.clip_grad_norm_(travel_time.parameters(), 1.0)
         optimizer.step()
         with torch.no_grad():
             raw_travel_time.event_loc.weight.data[:, 2].clamp_(
                 min=config["zlim_km"][0] + 0.1, max=config["zlim_km"][1] - 0.1
             )
+            raw_travel_time.event_loc.weight.data[torch.isnan(raw_travel_time.event_loc.weight)] = 0.0
         if ddp_local_rank == 0:
             print(f"Epoch {i}: Loss {loss:.6e}")
 

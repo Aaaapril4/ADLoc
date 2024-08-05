@@ -112,12 +112,15 @@ def plotting(stations, figure_path, config, picks, events_old, locations, statio
 
 
 # %%
-def plotting_dd(events_new, stations, config, figure_path, events_old, suffix=""):
+def plotting_dd(events, stations, config, figure_path, events_old, suffix=""):
 
     xmin, xmax = config["xlim_km"]
     ymin, ymax = config["ylim_km"]
     zmin, zmax = config["zlim_km"]
     vmin, vmax = zmin, zmax
+
+    s = max(0.1, min(10, 5000 / len(events)))
+    alpha = 0.8
 
     fig, ax = plt.subplots(3, 2, figsize=(10, 10), gridspec_kw={"height_ratios": [2, 1, 1]})
     im = ax[0, 0].scatter(
@@ -125,11 +128,12 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, suffix=""
         events_old["y_km"],
         c=events_old["z_km"],
         cmap="viridis_r",
-        s=1,
+        s=s,
         marker="o",
         vmin=vmin,
         vmax=vmax,
-        alpha=0.5,
+        alpha=alpha,
+        linewidth=0.0,
     )
     ax[0, 0].set_xlim([xmin, xmax])
     ax[0, 0].set_ylim([ymin, ymax])
@@ -138,21 +142,22 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, suffix=""
     ax[0, 0].set_title(f"ADLoc: {len(events_old)} events")
 
     im = ax[0, 1].scatter(
-        events_new["x_km"],
-        events_new["y_km"],
-        c=events_new["z_km"],
+        events["x_km"],
+        events["y_km"],
+        c=events["z_km"],
         cmap="viridis_r",
-        s=1,
+        s=s,
         marker="o",
         vmin=vmin,
         vmax=vmax,
-        alpha=0.5,
+        alpha=alpha,
+        linewidth=0.0,
     )
     ax[0, 1].set_xlim([xmin, xmax])
     ax[0, 1].set_ylim([ymin, ymax])
     cbar = fig.colorbar(im, ax=ax[0, 1])
     cbar.set_label("Depth (km)")
-    ax[0, 1].set_title(f"ADLoc DD: {len(events_new)} events")
+    ax[0, 1].set_title(f"ADLoc DD: {len(events)} events")
 
     # im = ax[1, 0].scatter(
     #     events_new["x_km"],
@@ -174,11 +179,12 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, suffix=""
         events_old["z_km"],
         c=events_old["z_km"],
         cmap="viridis_r",
-        s=1,
+        s=s,
         marker="o",
         vmin=vmin,
         vmax=vmax,
-        alpha=0.5,
+        alpha=alpha,
+        linewidth=0.0,
     )
     ax[1, 0].set_xlim([xmin, xmax])
     ax[1, 0].set_ylim([zmax, zmin])
@@ -186,15 +192,16 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, suffix=""
     cbar.set_label("Depth (km)")
 
     im = ax[1, 1].scatter(
-        events_new["x_km"],
-        events_new["z_km"],
-        c=events_new["z_km"],
+        events["x_km"],
+        events["z_km"],
+        c=events["z_km"],
         cmap="viridis_r",
-        s=1,
+        s=s,
         marker="o",
         vmin=vmin,
         vmax=vmax,
-        alpha=0.5,
+        alpha=alpha,
+        linewidth=0.0,
     )
     ax[1, 1].set_xlim([xmin, xmax])
     ax[1, 1].set_ylim([zmax, zmin])
@@ -206,11 +213,12 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, suffix=""
         events_old["z_km"],
         c=events_old["z_km"],
         cmap="viridis_r",
-        s=1,
+        s=s,
         marker="o",
         vmin=vmin,
         vmax=vmax,
-        alpha=0.5,
+        alpha=alpha,
+        linewidth=0.0,
     )
     ax[2, 0].set_xlim([ymin, ymax])
     ax[2, 0].set_ylim([zmax, zmin])
@@ -218,15 +226,16 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, suffix=""
     cbar.set_label("Depth (km)")
 
     im = ax[2, 1].scatter(
-        events_new["y_km"],
-        events_new["z_km"],
-        c=events_new["z_km"],
+        events["y_km"],
+        events["z_km"],
+        c=events["z_km"],
         cmap="viridis_r",
-        s=1,
+        s=s,
         marker="o",
         vmin=vmin,
         vmax=vmax,
-        alpha=0.5,
+        alpha=alpha,
+        linewidth=0.0,
     )
     ax[2, 1].set_xlim([ymin, ymax])
     ax[2, 1].set_ylim([zmax, zmin])

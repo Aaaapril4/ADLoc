@@ -73,8 +73,8 @@ if __name__ == "__main__":
         os.makedirs(result_path)
 
     # %%
-    MAX_PAIR_DIST = 10  # km
-    MAX_NEIGHBORS = 500
+    MAX_PAIR_DIST = 5  # km
+    MAX_NEIGHBORS = 20
     MIN_NEIGHBORS = 8
     MIN_OBS = 8
     MAX_OBS = 20
@@ -192,6 +192,15 @@ if __name__ == "__main__":
         phase_type = np.concatenate([r["phase_type"] for r in results])
         phase_score = np.concatenate([r["phase_score"] for r in results])
         dd_time = np.concatenate([r["dd_time"] for r in results])
+
+        # Filter large P and S time differences
+        idx = ((phase_type == 0) & (np.abs(dd_time) < 1.0)) | ((phase_type == 1) & (np.abs(dd_time) < 1.5))
+        event_index1 = event_index1[idx]
+        event_index2 = event_index2[idx]
+        station_index = station_index[idx]
+        phase_type = phase_type[idx]
+        phase_score = phase_score[idx]
+        dd_time = dd_time[idx]
         print(f"Saving to disk: {len(event_index1)} pairs")
         # np.savez_compressed(
         #     os.path.join(catalog_path, "adloc_dt.npz"),
