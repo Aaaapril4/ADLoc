@@ -25,12 +25,15 @@ def interp2d(time_table, x, y, xgrid, ygrid, h):
     ny = len(ygrid)
     assert time_table.shape == (nx, ny)
 
-    ix0 = torch.floor((x - xgrid[0]) / h).clamp(0, nx - 2).long()
-    iy0 = torch.floor((y - ygrid[0]) / h).clamp(0, ny - 2).long()
-    ix1 = ix0 + 1
-    iy1 = iy0 + 1
-    # x = (torch.clamp(x, self.xgrid[0], self.xgrid[-1]) - self.xgrid[0]) / self.h
-    # y = (torch.clamp(y, self.ygrid[0], self.ygrid[-1]) - self.ygrid[0]) / self.h
+    with torch.no_grad():
+        ix0 = torch.floor((x - xgrid[0]) / h).clamp(0, nx - 2).long()
+        iy0 = torch.floor((y - ygrid[0]) / h).clamp(0, ny - 2).long()
+        ix1 = ix0 + 1
+        iy1 = iy0 + 1
+
+    # x = (torch.clamp(x, xgrid[0], xgrid[-1]) - xgrid[0]) / h
+    # y = (torch.clamp(y, ygrid[0], ygrid[-1]) - ygrid[0]) / h
+
     x = (clamp(x, xgrid[0], xgrid[-1]) - xgrid[0]) / h
     y = (clamp(y, ygrid[0], ygrid[-1]) - ygrid[0]) / h
 
@@ -219,6 +222,9 @@ class TravelTimeDD(TravelTime):
             dtype=dtype,
             grad_type=grad_type,
         )
+
+        self.event_loc.weight.requires_grad = True
+        self.event_time.weight.requires_grad = False
 
     def calc_time(self, event_loc, station_loc, phase_type):
         if self.eikonal is None:

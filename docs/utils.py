@@ -7,15 +7,10 @@ import numpy as np
 # # %%
 def plotting(stations, figure_path, config, picks, events_old, locations, station_term=None, suffix=""):
 
-    vmin = min(locations["z_km"].min(), events_old["depth_km"].min())
-    vmax = max(locations["z_km"].max(), events_old["depth_km"].max())
-    # xmin, xmax = stations["x_km"].min(), stations["x_km"].max()
-    # ymin, ymax = stations["y_km"].min(), stations["y_km"].max()
-    xmin = min(stations["x_km"].min(), locations["x_km"].min())
-    xmax = max(stations["x_km"].max(), locations["x_km"].max())
-    ymin = min(stations["y_km"].min(), locations["y_km"].min())
-    ymax = max(stations["y_km"].max(), locations["y_km"].max())
+    xmin, xmax = config["xlim_km"]
+    ymin, ymax = config["ylim_km"]
     zmin, zmax = config["zlim_km"]
+    vmin, vmax = zmin, zmax
 
     fig, ax = plt.subplots(2, 2, figsize=(10, 8), gridspec_kw={"height_ratios": [2, 1]})
     # fig, ax = plt.subplots(2, 3, figsize=(15, 8), gridspec_kw={"height_ratios": [2, 1]})
@@ -79,22 +74,52 @@ def plotting(stations, figure_path, config, picks, events_old, locations, statio
     ax[1, 1].set_ylim([zmax, zmin])
     cbar = fig.colorbar(im, ax=ax[1, 1])
     cbar.set_label("Depth (km)")
+
+    # if ("sigma_x" in locations.columns) and ("sigma_y" in locations.columns) and ("sigma_z" in locations.columns):
+    #     ax[0, 0].errorbar(
+    #         locations["x_km"],
+    #         locations["y_km"],
+    #         xerr=locations["sigma_x"],
+    #         yerr=locations["sigma_y"],
+    #         fmt=".",
+    #         alpha=0.3,
+    #         color="k",
+    #         markersize=0.1,
+    #     )
+    #     ax[1, 0].errorbar(
+    #         locations["x_km"],
+    #         locations["z_km"],
+    #         xerr=locations["sigma_x"],
+    #         yerr=locations["sigma_z"],
+    #         fmt=".",
+    #         alpha=0.3,
+    #         color="k",
+    #         markersize=0.1,
+    #     )
+    #     ax[1, 1].errorbar(
+    #         locations["y_km"],
+    #         locations["z_km"],
+    #         xerr=locations["sigma_y"],
+    #         yerr=locations["sigma_z"],
+    #         fmt=".",
+    #         alpha=0.3,
+    #         color="k",
+    #         markersize=0.1,
+    #     )
+
     plt.savefig(os.path.join(figure_path, f"location_{suffix}.png"), bbox_inches="tight", dpi=300)
     plt.close(fig)
 
 
 # %%
-def plotting_dd(events_new, stations, config, figure_path, events_old, iter=0):
+def plotting_dd(events_new, stations, config, figure_path, events_old, suffix=""):
 
-    vmin = min(events_new["z_km"].min(), events_old["z_km"].min())
-    vmax = max(events_new["z_km"].max(), events_old["z_km"].max())
-    xmin = min(stations["x_km"].min(), events_old["x_km"].min())
-    xmax = max(stations["x_km"].max(), events_old["x_km"].max())
-    ymin = min(stations["y_km"].min(), events_old["y_km"].min())
-    ymax = max(stations["y_km"].max(), events_old["y_km"].max())
+    xmin, xmax = config["xlim_km"]
+    ymin, ymax = config["ylim_km"]
     zmin, zmax = config["zlim_km"]
+    vmin, vmax = zmin, zmax
 
-    fig, ax = plt.subplots(2, 2, figsize=(10, 8), gridspec_kw={"height_ratios": [2, 1]})
+    fig, ax = plt.subplots(3, 2, figsize=(10, 10), gridspec_kw={"height_ratios": [2, 1, 1]})
     im = ax[0, 0].scatter(
         events_old["x_km"],
         events_old["y_km"],
@@ -145,6 +170,38 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, iter=0):
     # cbar.set_label("Depth (km)")
 
     im = ax[1, 0].scatter(
+        events_old["x_km"],
+        events_old["z_km"],
+        c=events_old["z_km"],
+        cmap="viridis_r",
+        s=1,
+        marker="o",
+        vmin=vmin,
+        vmax=vmax,
+        alpha=0.5,
+    )
+    ax[1, 0].set_xlim([xmin, xmax])
+    ax[1, 0].set_ylim([zmax, zmin])
+    cbar = fig.colorbar(im, ax=ax[1, 0])
+    cbar.set_label("Depth (km)")
+
+    im = ax[1, 1].scatter(
+        events_new["x_km"],
+        events_new["z_km"],
+        c=events_new["z_km"],
+        cmap="viridis_r",
+        s=1,
+        marker="o",
+        vmin=vmin,
+        vmax=vmax,
+        alpha=0.5,
+    )
+    ax[1, 1].set_xlim([xmin, xmax])
+    ax[1, 1].set_ylim([zmax, zmin])
+    cbar = fig.colorbar(im, ax=ax[1, 1])
+    cbar.set_label("Depth (km)")
+
+    im = ax[2, 0].scatter(
         events_old["y_km"],
         events_old["z_km"],
         c=events_old["z_km"],
@@ -155,12 +212,12 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, iter=0):
         vmax=vmax,
         alpha=0.5,
     )
-    ax[1, 0].set_xlim([ymin, ymax])
-    ax[1, 0].set_ylim([zmax, zmin])
-    cbar = fig.colorbar(im, ax=ax[1, 0])
+    ax[2, 0].set_xlim([ymin, ymax])
+    ax[2, 0].set_ylim([zmax, zmin])
+    cbar = fig.colorbar(im, ax=ax[2, 0])
     cbar.set_label("Depth (km)")
 
-    im = ax[1, 1].scatter(
+    im = ax[2, 1].scatter(
         events_new["y_km"],
         events_new["z_km"],
         c=events_new["z_km"],
@@ -171,30 +228,32 @@ def plotting_dd(events_new, stations, config, figure_path, events_old, iter=0):
         vmax=vmax,
         alpha=0.5,
     )
-    ax[1, 1].set_xlim([ymin, ymax])
-    ax[1, 1].set_ylim([zmax, zmin])
-    cbar = fig.colorbar(im, ax=ax[1, 1])
+    ax[2, 1].set_xlim([ymin, ymax])
+    ax[2, 1].set_ylim([zmax, zmin])
+    cbar = fig.colorbar(im, ax=ax[2, 1])
     cbar.set_label("Depth (km)")
-    plt.savefig(os.path.join(figure_path, f"location_{iter}.png"), bbox_inches="tight", dpi=300)
+
+    plt.savefig(os.path.join(figure_path, f"location{suffix}.png"), bbox_inches="tight", dpi=300)
 
 
 # %%
-def plotting_ransac(stations, figure_path, config, picks, events_init, events, iter=0):
+def plotting_ransac(stations, figure_path, config, picks, events_init, events, suffix=""):
     fig, ax = plt.subplots(2, 3, figsize=(15, 8))
     ax[0, 0].hist(events["adloc_score"], bins=30, edgecolor="white")
     ax[0, 0].set_yscale("log")
     ax[0, 0].set_title("ADLoc score")
     ax[0, 1].hist(events["num_picks"], bins=30, edgecolor="white")
     ax[0, 1].set_title("Number of picks")
-    ax[0, 2].hist(events["adloc_residual_amplitude"], bins=30, edgecolor="white")
-    ax[0, 2].set_title("Event residual (log10 cm/s)")
     ax[1, 0].hist(events["adloc_residual_time"], bins=30, edgecolor="white")
     ax[1, 0].set_title("Event residual (s)")
     ax[1, 1].hist(picks[picks["mask"] == 1.0]["residual_time"], bins=30, edgecolor="white")
     ax[1, 1].set_title("Pick residual (s)")
-    ax[1, 2].hist(picks[picks["mask"] == 1.0]["residual_amplitude"], bins=30, edgecolor="white")
-    ax[1, 2].set_title("Pick residual (log10 cm/s)")
-    plt.savefig(os.path.join(figure_path, f"hist_{iter}.png"), bbox_inches="tight", dpi=300)
+    if "residual_amplitude" in picks.columns:
+        ax[0, 2].hist(picks[picks["mask"] == 1.0]["residual_amplitude"], bins=30, edgecolor="white")
+        ax[0, 2].set_title("Pick residual (log10 cm/s)")
+        ax[1, 2].hist(picks[picks["mask"] == 1.0]["residual_amplitude"], bins=30, edgecolor="white")
+        ax[1, 2].set_title("Pick residual (log10 cm/s)")
+    plt.savefig(os.path.join(figure_path, f"error{suffix}.png"), bbox_inches="tight", dpi=300)
     plt.close(fig)
 
     xmin, xmax = config["xlim_km"]
@@ -216,7 +275,7 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, i
         vmin=vmin,
         vmax=vmax,
         alpha=alpha,
-        linewidth=0.,
+        linewidth=0.0,
     )
     # set ratio 1:1
     ax[0, 0].set_aspect("equal", "box")
@@ -305,7 +364,7 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, i
         vmin=vmin,
         vmax=vmax,
         alpha=alpha,
-        linewidth=0.,
+        linewidth=0.0,
     )
     # ax[1, 0].set_aspect("equal", "box")
     ax[1, 0].set_xlim([xmin, xmax])
@@ -325,7 +384,7 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, i
         vmin=vmin,
         vmax=vmax,
         alpha=alpha,
-        linewidth=0.,
+        linewidth=0.0,
     )
     # ax[1, 1].set_aspect("equal", "box")
     ax[1, 1].set_xlim([ymin, ymax])
@@ -334,5 +393,5 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, i
     # ax[1, 1].set_ylabel("Depth (km)")
     cbar = fig.colorbar(im, ax=ax[1, 1])
     cbar.set_label("Depth (km)")
-    plt.savefig(os.path.join(figure_path, f"location_{iter}.png"), bbox_inches="tight", dpi=300)
+    plt.savefig(os.path.join(figure_path, f"location{suffix}.png"), bbox_inches="tight", dpi=300)
     plt.close(fig)

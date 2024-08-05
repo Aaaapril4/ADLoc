@@ -31,13 +31,22 @@ def invert(picks, stations, config, estimator, event_index, event_init):
 
     MIN_PICKS = config["min_picks"]
     MIN_PICKS_RATIO = config["min_picks_ratio"]
-    MAX_RESIDUAL = [config["max_residual_time"], config["max_residual_amplitude"]]
+    if config["use_amplitude"]:
+        MAX_RESIDUAL = [config["max_residual_time"], config["max_residual_amplitude"]]
+    else:
+        MAX_RESIDUAL = config["max_residual_time"]
 
-    X = picks.merge(
-        stations[["x_km", "y_km", "z_km", "station_id", "station_term_time", "station_term_amplitude"]],
-        # stations[["x_km", "y_km", "z_km", "station_id", "station_term_p", "station_term_s"]], ## Separate P and S station term
-        on="station_id",
-    )
+    if config["use_amplitude"]:
+        X = picks.merge(
+            stations[["x_km", "y_km", "z_km", "station_id", "station_term_time", "station_term_amplitude"]],
+            # stations[["x_km", "y_km", "z_km", "station_id", "station_term_p", "station_term_s"]], ## Separate P and S station term
+            on="station_id",
+        )
+    else:
+        X = picks.merge(
+            stations[["x_km", "y_km", "z_km", "station_id", "station_term_time"]],
+            on="station_id",
+        )
     t0 = X["phase_time"].min()
 
     if event_init is not None:
@@ -49,13 +58,12 @@ def invert(picks, stations, config, estimator, event_index, event_init):
     # ystd = np.std(X["y_km"])
     # rstd = np.sqrt(xstd**2 + ystd**2)
 
-    X.rename(
-        columns={"phase_type": "type", "phase_score": "score", "phase_time": "t_s", "phase_amplitude": "amp"},
-        inplace=True,
-    )
+    X.rename(columns={"phase_type": "type", "phase_score": "score", "phase_time": "t_s"}, inplace=True)
     X["t_s"] = (X["t_s"] - t0).dt.total_seconds()
     X["t_s"] = X["t_s"] - X["station_term_time"]
-    X["amp"] = X["amp"] - X["station_term_amplitude"]
+    if config["use_amplitude"]:
+        X.rename(columns={"phase_amplitude": "amp"}, inplace=True)
+        X["amp"] = X["amp"] - X["station_term_amplitude"]
     # X["t_s"] = X.apply(
     #     lambda x: x["t_s"] - x["station_term_p"] if x["type"] == 0 else x["t_s"] - x["station_term_s"], axis=1
     # ) ## Separate P and S station term
@@ -80,7 +88,10 @@ def invert(picks, stations, config, estimator, event_index, event_init):
         is_data_valid=is_data_valid,
     )
     try:
-        reg.fit(X[["idx_sta", "type", "score", "amp"]].values, X[["t_s", "amp"]].values)
+        if config["use_amplitude"]:
+            reg.fit(X[["idx_sta", "type", "score", "amp"]].values, X[["t_s", "amp"]].values)
+        else:
+            reg.fit(X[["idx_sta", "type", "score"]].values, X[["t_s"]].values)
     except Exception as e:
         print(f"No valid model for event_index {event_index}.")
         message = "RANSAC could not find a valid consensus set."
@@ -88,7 +99,8 @@ def invert(picks, stations, config, estimator, event_index, event_init):
             print(e)
         picks["mask"] = 0
         picks["residual_time"] = 0.0
-        picks["residual_amplitude"] = 0.0
+        if config["use_amplitude"]:
+            picks["residual_amplitude"] = 0.0
         return picks, None
 
     estimator = reg.estimator_
@@ -100,10 +112,13 @@ def invert(picks, stations, config, estimator, event_index, event_init):
         tt = output[:, 0]
         amp = output[:, 1]
     else:
-        tt = output
-    score = estimator.score(
-        X[["idx_sta", "type", "score", "amp"]].values[inlier_mask], y=X[["t_s", "amp"]].values[inlier_mask]
-    )
+        tt = output[:, 0]
+    if config["use_amplitude"]:
+        score = estimator.score(
+            X[["idx_sta", "type", "score", "amp"]].values[inlier_mask], y=X[["t_s", "amp"]].values[inlier_mask]
+        )
+    else:
+        score = estimator.score(X[["idx_sta", "type", "score"]].values[inlier_mask], y=X[["t_s"]].values[inlier_mask])
 
     if (np.sum(inlier_mask) > MIN_PICKS) and (score > config["min_score"]):
         mean_residual_time = np.sum(np.abs(X["t_s"].values - tt) * inlier_mask) / np.sum(inlier_mask)
@@ -121,9 +136,10 @@ def invert(picks, stations, config, estimator, event_index, event_init):
             "time": t0 + pd.Timedelta(t, unit="s"),
             "adloc_score": score,
             "adloc_residual_time": mean_residual_time,
-            "adloc_residual_amplitude": mean_residual_amp,
             "num_picks": np.sum(inlier_mask),
         }
+        if config["use_amplitude"]:
+            event["adloc_residual_amplitude"] = mean_residual_amp
         event = pd.DataFrame([event])
     else:
         inlier_mask = np.zeros(len(inlier_mask), dtype=bool)
@@ -182,12 +198,13 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
         for idx_eve, picks_by_event in picks.groupby("idx_eve"):
             if events_init is not None:
                 event_init = events_init[events_init["idx_eve"] == idx_eve]
-                if len(event_init) > 0:
+                if len(event_init) == 1:
                     event_init = event_init[["x_km", "y_km", "z_km", "time"]].values[0]
+                elif len(event_init) > 1:
+                    event_init = event_init[["x_km", "y_km", "z_km", "time"]].values[0]
+                    print(f"Multiple initial locations for event_index {idx_eve}.")
                 else:
                     event_init = None
-            else:
-                event_init = None
 
             # picks_, event_ = invert(picks_by_event, stations, config, estimator, idx_eve, event_init)
             # if event_ is not None:
@@ -215,8 +232,6 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
     picks_inverted = pd.concat(picks_inverted)
     if events_init is not None:
         events_inverted = events_inverted.merge(events_init[["event_index", "idx_eve"]], on="idx_eve")
-    else:
-        events_inverted["event_index"] = events_inverted["idx_eve"]
 
     print(f"ADLoc using {len(picks_inverted[picks_inverted['mask'] == 1])} picks outof {len(picks_inverted)} picks")
 

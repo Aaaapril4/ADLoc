@@ -179,7 +179,7 @@ def traveltime(event_index, station_index, phase_type, events, stations, eikonal
 
         tt = np.zeros(len(phase_type), dtype=np.float32)
 
-        if isinstance(phase_type[0].item(), str):
+        if isinstance(phase_type[0], str):
             p_index = phase_type == "P"
             s_index = phase_type == "S"
         elif isinstance(phase_type[0].item(), int):
@@ -293,12 +293,26 @@ def init_eikonal2d(config):
     nz = len(zgrid)
 
     vel = config["vel"]
-    zz, vp, vs = vel["Z"], vel["P"], vel["S"]
+    zz, vp, vs = np.array(vel["Z"]), np.array(vel["P"]), np.array(vel["S"])
+
+    # ##############################################
+    # ## make the velocity staircase not linear 
+    # zz_grid = zz[1:] - h
+    # vp_grid = vp[:-1]
+    # vs_grid = vs[:-1]
+    # zz = np.concatenate([zz, zz_grid])
+    # vp = np.concatenate([vp, vp_grid])
+    # vs = np.concatenate([vs, vs_grid])
+    # idx = np.argsort(zz)
+    # zz = zz[idx]
+    # vp = vp[idx]
+    # vs = vs[idx]
+    # ##############################################
+
     vp1d = np.interp(zgrid, zz, vp)
     vs1d = np.interp(zgrid, zz, vs)
     vp = np.tile(vp1d, (nr, 1))
     vs = np.tile(vs1d, (nr, 1))
-
     # ir0 = np.floor(config["source_loc"][0] / h).astype(np.int64)
     # iz0 = np.floor(config["source_loc"][1] / h).astype(np.int64)
     ir0 = np.round(0 - rlim[0] / h).astype(np.int64)

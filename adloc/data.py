@@ -161,7 +161,8 @@ class PhaseDataset(Dataset):
                 if key == -1:
                     continue
                 group = self.picks_by_event.get_group(key)
-                phase_time.append(group["travel_time"].values)
+                phase_time.append(group["travel_time"].values)  # seconds
+                # phase_time.append(group["phase_time"].values) # datetime not supported
                 phase_score.append(group["phase_score"].values)
                 phase_type.extend(group["phase_type"].values.tolist())
                 idx_eve.extend(group["idx_eve"].values.tolist())

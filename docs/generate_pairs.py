@@ -101,10 +101,11 @@ if __name__ == "__main__":
         picks = picks.drop("idx_sta", axis=1)
 
     # %%
-    stations["idx_sta"] = np.arange(
-        len(stations)
-    )  # reindex in case the index does not start from 0 or is not continuous
-    events["idx_eve"] = np.arange(len(events))  # reindex in case the index does not start from 0 or is not continuous
+    # reindex in case the index does not start from 0 or is not continuous
+    stations = stations[stations["station_id"].isin(picks["station_id"].unique())]
+    events = events[events["event_index"].isin(picks["event_index"].unique())]
+    stations["idx_sta"] = np.arange(len(stations))
+    events["idx_eve"] = np.arange(len(events))
 
     picks = picks.merge(events[["event_index", "idx_eve"]], on="event_index")
     picks = picks.merge(stations[["station_id", "idx_sta"]], on="station_id")
@@ -113,19 +114,21 @@ if __name__ == "__main__":
     lon0 = stations["longitude"].median()
     lat0 = stations["latitude"].median()
     proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
+
     stations[["x_km", "y_km"]] = stations.apply(
         lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
     )
     stations["depth_km"] = -stations["elevation_m"] / 1000
     stations["z_km"] = stations["depth_km"]
+
     events[["x_km", "y_km"]] = events.apply(
         lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
     )
     events["z_km"] = events["depth_km"]
 
-    picks["travel_time"] = picks.apply(
-        lambda x: (x["phase_time"] - events.loc[x["idx_eve"], "time"]).total_seconds(), axis=1
-    )
+    picks = picks.merge(events[["idx_eve", "time"]], on="idx_eve")
+    picks["travel_time"] = (picks["phase_time"] - picks["time"]).dt.total_seconds()
+    picks.drop("time", axis=1, inplace=True)
 
     # %%
     picks_by_event = picks.groupby("idx_eve")
@@ -162,7 +165,7 @@ if __name__ == "__main__":
     # pairs = list(pairs)
 
     # %%
-    NCPU = mp.cpu_count()
+    NCPU = min(32, mp.cpu_count())
     with mp.Manager() as manager:
 
         pool = mp.Pool(NCPU)

@@ -1,20 +1,10 @@
-import json
 import os
-from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import torch
-import torch.distributed as dist
-import torch.nn.functional as F
 import torch.optim as optim
-from matplotlib import pyplot as plt
 from pyproj import Proj
-from sklearn.neighbors import NearestNeighbors
-from torch import nn
-from torch.distributed import init_process_group
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
@@ -33,31 +23,79 @@ if __name__ == "__main__":
     MAX_SST_ITER = 10
 
     # %%
-    region = "synthetic"
-    # region = "ridgecrest"
-    data_path = f"test_data/{region}"
+    # ##################################### DEMO DATA #####################################
+    # region = "synthetic"
+    # # region = "ridgecrest"
+    # data_path = f"test_data/{region}"
+    # result_path = f"results/{region}"
+
+    # picks_file = os.path.join(data_path, "picks.csv")
+    # events_file = os.path.join(data_path, "events.csv")
+    # stations_file = os.path.join(data_path, "stations.csv")
+    # config_file = os.path.join(data_path, "config.json")
+
+    # ## JSON format
+    # # with open(args.stations, "r") as fp:
+    # #     stations = json.load(fp)
+    # # stations = pd.DataFrame.from_dict(stations, orient="index")
+    # # stations["station_id"] = stations.index
+    # ## CSV format
+    # stations = pd.read_csv(stations_file)
+    # picks = pd.read_csv(picks_file, parse_dates=["phase_time"])
+    # events = pd.read_csv(events_file, parse_dates=["time"])
+    # config = json.load(open(config_file))
+    # config["mindepth"] = 0
+    # config["maxdepth"] = 15
+
+    # ## Eikonal for 1D velocity model
+    # zz = [0.0, 5.5, 16.0, 32.0]
+    # vp = [5.5, 5.5, 6.7, 7.8]
+    # vp_vs_ratio = 1.73
+    # vs = [v / vp_vs_ratio for v in vp]
+    # h = 0.3
+
+    # ##################################### DEMO DATA #####################################
+
+    ##################################### Stanford DATA #####################################
+    region = "stanford"
+    data_path = f"./{region}/"
     result_path = f"results/{region}"
+    figure_path = f"figures/{region}/"
+
+    picks = pd.read_csv(f"{data_path}/phase.csv", parse_dates=["time"])
+    events = None
+    stations = pd.read_csv(f"{data_path}/station.csv")
+
+    picks.rename({"time": "phase_time", "evid": "event_index", "phase": "phase_type"}, axis=1, inplace=True)
+    picks["phase_time"] = pd.to_datetime(picks["phase_time"])
+    picks["station_id"] = picks["network"] + "." + picks["station"]
+    picks["phase_score"] = 1.0
+
+    stations.rename({"elevation": "elevation_m"}, axis=1, inplace=True)
+    stations["station_id"] = stations["network"] + "." + stations["station"]
+
+    config = {
+        "maxlongitude": -117.10,
+        "minlongitude": -118.2,
+        "maxlatitude": 36.4,
+        "minlatitude": 35.3,
+        "mindepth": 0,
+        "maxdepth": 15,
+    }
+
+    ## Eikonal for 1D velocity model
+    zz = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 30.0]
+    vp = [4.746, 4.793, 4.799, 5.045, 5.721, 5.879, 6.504, 6.708, 6.725, 7.800]
+    vs = [2.469, 2.470, 2.929, 2.930, 3.402, 3.403, 3.848, 3.907, 3.963, 4.500]
+    h = 0.3
+
+    ##################################### Stanford DATA #####################################
+
+    # %%
     if not os.path.exists(result_path):
         os.makedirs(result_path)
-    figure_path = f"figures/{region}/"
     if not os.path.exists(figure_path):
         os.makedirs(figure_path)
-
-    picks_file = os.path.join(data_path, "picks.csv")
-    events_file = os.path.join(data_path, "events.csv")
-    stations_file = os.path.join(data_path, "stations.csv")
-    config_file = os.path.join(data_path, "config.json")
-
-    # %% JSON format
-    # with open(args.stations, "r") as fp:
-    #     stations = json.load(fp)
-    # stations = pd.DataFrame.from_dict(stations, orient="index")
-    # stations["station_id"] = stations.index
-    # %% CSV format
-    stations = pd.read_csv(stations_file)
-    picks = pd.read_csv(picks_file, parse_dates=["phase_time"])
-    events = pd.read_csv(events_file, parse_dates=["time"])
-    config = json.load(open(config_file))
 
     # %%
     ## Automatic region; you can also specify a region
@@ -72,17 +110,16 @@ if __name__ == "__main__":
         stations["depth_km"] = -stations["elevation_m"] / 1000
     if "station_term" not in stations:
         stations["station_term"] = 0.0
-    events["x_km"], events["y_km"] = proj(events["longitude"], events["latitude"])
-    events["z_km"] = events["depth_km"]
     stations["x_km"], stations["y_km"] = proj(stations["longitude"], stations["latitude"])
     stations["z_km"] = stations["depth_km"]
+    if events is not None:
+        events["x_km"], events["y_km"] = proj(events["longitude"], events["latitude"])
+        events["z_km"] = events["depth_km"]
 
     if ("xlim_km" not in config) or ("ylim_km" not in config) or ("zlim_km" not in config):
         xmin, ymin = proj(config["minlongitude"], config["minlatitude"])
         xmax, ymax = proj(config["maxlongitude"], config["maxlatitude"])
-        zmin = stations["z_km"].min()
-        zmax = 20
-        config = {}
+        zmin, zmax = config["mindepth"], config["maxdepth"]
         config["xlim_km"] = (xmin, xmax)
         config["ylim_km"] = (ymin, ymax)
         config["zlim_km"] = (zmin, zmax)
@@ -93,11 +130,14 @@ if __name__ == "__main__":
     config["eikonal"] = None
 
     ## Eikonal for 1D velocity model
-    zz = [0.0, 5.5, 16.0, 32.0]
-    vp = [5.5, 5.5, 6.7, 7.8]
-    vp_vs_ratio = 1.73
-    vs = [v / vp_vs_ratio for v in vp]
-    h = 0.3
+    # zz = [0.0, 5.5, 16.0, 32.0]
+    # vp = [5.5, 5.5, 6.7, 7.8]
+    # vp_vs_ratio = 1.73
+    # vs = [v / vp_vs_ratio for v in vp]
+    # zz = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 30.0]
+    # vp = [4.746, 4.793, 4.799, 5.045, 5.721, 5.879, 6.504, 6.708, 6.725, 7.800]
+    # vs = [2.469, 2.470, 2.929, 2.930, 3.402, 3.403, 3.848, 3.907, 3.963, 4.500]
+    # h = 0.3
     vel = {"Z": zz, "P": vp, "S": vs}
     config["eikonal"] = {
         "vel": vel,
@@ -118,15 +158,23 @@ if __name__ == "__main__":
 
     # %% reindex in case the index does not start from 0 or is not continuous
     stations["idx_sta"] = np.arange(len(stations))
-    events["idx_eve"] = np.arange(len(events))
+    if events is not None:
+        events["idx_eve"] = np.arange(len(events))
+    else:
+        picks = picks.merge(stations[["station_id", "x_km", "y_km", "z_km"]], on="station_id")
+        events = picks.groupby("event_index").agg({"x_km": "mean", "y_km": "mean", "z_km": "mean", "phase_time": "min"})
+        events["z_km"] = 10.0  # km default depth
+        events.rename({"phase_time": "time"}, axis=1, inplace=True)
+        events["event_index"] = events.index
+        events.reset_index(drop=True, inplace=True)
+        events["idx_eve"] = np.arange(len(events))
 
     picks = picks.merge(events[["event_index", "idx_eve"]], on="event_index")
     picks = picks.merge(stations[["station_id", "idx_sta"]], on="station_id")
 
     # %%
-    picks["travel_time"] = picks.apply(
-        lambda x: (x["phase_time"] - events.loc[x["idx_eve"], "time"]).total_seconds(), axis=1
-    )
+    picks = picks.merge(events[["idx_eve", "time"]], on="idx_eve")
+    picks["travel_time"] = (picks["phase_time"] - picks["time"]).dt.total_seconds()
 
     # %%
     num_event = len(events)
@@ -147,23 +195,17 @@ if __name__ == "__main__":
     data_loader = DataLoader(phase_dataset, batch_size=None, shuffle=False, num_workers=0)
 
     # %%
-    event_loc_init = np.zeros((num_event, 3))
-    event_loc_init[:, 2] = np.mean(config["zlim_km"])
     travel_time = TravelTime(
         num_event,
         num_station,
         station_loc,
-        # event_loc=event_loc_init,  # Initial location
         event_loc=events[["x_km", "y_km", "z_km"]].values,
-        # event_time=event_time,
         velocity={"P": vp, "S": vs},
         eikonal=config["eikonal"],
     )
 
     # %% Conventional location
-    print(
-        f"Dataset: {len(picks)} picks, {len(events)} events, {len(stations)} stations, {len(phase_dataset)} batches"
-    )
+    print(f"Dataset: {len(picks)} picks, {len(events)} events, {len(stations)} stations, {len(phase_dataset)} batches")
     print(f"============================ Basic location ============================")
 
     optimizer = optim.Adam(params=travel_time.parameters(), lr=1.0)
@@ -190,7 +232,10 @@ if __name__ == "__main__":
         prev_loss = loss
 
         optimizer.step()
-
+        with torch.no_grad():
+            travel_time.event_loc.weight.data[:, 2] = torch.clamp(
+                travel_time.event_loc.weight.data[:, 2], min=config["zlim_km"][0] + 0.1, max=config["zlim_km"][1] - 0.1
+            )
 
     print(f"Loss (Adam):  {loss}")
 
@@ -262,14 +307,12 @@ if __name__ == "__main__":
             .apply(lambda x: weighted_mean(x["residual_s"], x["phase_score"]))
             .reset_index(name="residual_s")
         )
-        stations["station_term"] += (
-            stations["idx_sta"].map(station_term.set_index("idx_sta")["residual_s"]).fillna(0)
+        stations["station_term"] += stations["idx_sta"].map(station_term.set_index("idx_sta")["residual_s"]).fillna(0)
+        travel_time.station_dt.weight.data = torch.tensor(stations["station_term"].values, dtype=torch.float32).view(
+            -1, 1
         )
-        travel_time.station_dt.weight.data = torch.tensor(
-            stations["station_term"].values, dtype=torch.float32
-        ).view(-1, 1)
 
-        optimizer = optim.Adam(params=travel_time.parameters(), lr=1.0)
+        optimizer = optim.Adam(params=travel_time.parameters(), lr=0.01)
         for j in range(EPOCHS):
             optimizer.zero_grad()
 
@@ -294,8 +337,16 @@ if __name__ == "__main__":
             prev_loss = loss
 
             optimizer.step()
+            with torch.no_grad():
+                travel_time.event_loc.weight.data[:, 2] = torch.clamp(
+                    travel_time.event_loc.weight.data[:, 2],
+                    min=config["zlim_km"][0] + 0.1,
+                    max=config["zlim_km"][1] - 0.1,
+                )
 
         print(f"Loss (Adam):  {loss}")
+
+        # %%
         invert_event_loc = travel_time.event_loc.weight.clone().detach().numpy()
         invert_event_time = travel_time.event_time.weight.clone().detach().numpy()
 
@@ -310,6 +361,22 @@ if __name__ == "__main__":
         events["depth_km"] = events["z_km"]
         plotting(stations, figure_path, config, picks, events, events, suffix=f"sst_{i}")
 
+    # %%
+    invert_event_loc = travel_time.event_loc.weight.clone().detach().numpy()
+    invert_event_time = travel_time.event_time.weight.clone().detach().numpy()
+
+    events = events_init.copy()
+    events["time"] = events["time"] + pd.to_timedelta(np.squeeze(invert_event_time), unit="s")
+    events["x_km"] = invert_event_loc[:, 0]
+    events["y_km"] = invert_event_loc[:, 1]
+    events["z_km"] = invert_event_loc[:, 2]
+    events[["longitude", "latitude"]] = events.apply(
+        lambda x: pd.Series(proj(x["x_km"], x["y_km"], inverse=True)), axis=1
+    )
+    events["depth_km"] = events["z_km"]
+    events.to_csv(
+        f"{result_path}/adloc_events_sst.csv", index=False, float_format="%.5f", date_format="%Y-%m-%dT%H:%M:%S.%f"
+    )
     plotting(stations, figure_path, config, picks, events, events, suffix="sst")
 
     # %% Location with grid search
@@ -317,13 +384,16 @@ if __name__ == "__main__":
     event_loc = travel_time.event_loc.weight.clone().detach().numpy()
     event_time = travel_time.event_time.weight.clone().detach().numpy()
     nx, ny, nz = 11, 11, 21
+    # nx * ny * nz, 3
+    z = np.linspace(config["zlim_km"][0], config["zlim_km"][1], nz)
     search_grid = np.stack(
-        np.meshgrid(np.linspace(-5, 5, nx), np.linspace(-5, 5, ny), np.linspace(0, 20, nz), indexing="ij"), axis=-1
+        np.meshgrid(np.linspace(-5, 5, nx), np.linspace(-5, 5, ny), z, indexing="ij"), axis=-1
     ).reshape(-1, 3)
     num_grid = search_grid.shape[0]
     picks_ = picks.copy()
     event_loc_gs = []  # grid_search location
     event_time_gs = []  # grid_search time
+    event_uncertainty = []
     for i, (event_loc_, event_time_) in tqdm(
         enumerate(zip(event_loc, event_time)), desc="Grid search:", total=num_event
     ):
@@ -338,8 +408,13 @@ if __name__ == "__main__":
         idx_sta = np.tile(idx_sta, num_grid)
         phase_type = np.tile(phase_type, num_grid)
         station_dt_ = stations.iloc[idx_sta]["station_term"].values
-        event_loc0 = event_loc_ - np.array([0, 0, np.round(event_loc_[2])])
-        # event_loc0 = event_loc_ - np.array([0, 0, event_loc_[2]])
+        # event_loc0 = event_loc_ - np.array([0, 0, np.round(event_loc_[2])])
+        # make suare event_loc_[2] can be sampled
+        if event_loc_[2] < z[0]:
+            shiftz = event_loc_[2] - z[0]
+        else:
+            shiftz = event_loc_[2] - z[z <= event_loc_[2]][-1]
+        event_loc0 = np.array([event_loc_[0], event_loc_[1], shiftz])
         event_time0 = event_time_
         tt = (
             event_time_
@@ -355,11 +430,21 @@ if __name__ == "__main__":
         )
         tt = np.reshape(tt, (num_grid, num_picks))
         dt = tt - picks_per_event["travel_time"].values
-        dt_mean = np.sum(dt * phase_weight, axis=-1) / np.sum(phase_weight)
-        dt_std = np.sqrt(np.sum((dt - dt_mean[:, None]) ** 2 * phase_weight, axis=-1) / np.sum(phase_weight))
+        dt_mean = np.sum(dt * phase_weight, axis=-1, keepdims=True) / np.sum(phase_weight)
+        dt_std = np.sqrt(np.sum((dt - dt_mean) ** 2 * phase_weight, axis=-1) / np.sum(phase_weight))
         idx = np.argmin(dt_std)
         event_loc_gs.append(search_grid[idx] + event_loc0)
         event_time_gs.append(np.mean(dt, axis=-1)[idx] + event_time0)
+
+        ## uncertainty
+        T = 0.03  # temperature
+        loss = np.sum(np.abs(dt) * phase_weight, axis=-1, keepdims=True) / np.sum(phase_weight)
+        prob = np.exp(-loss / T)
+        prob /= np.sum(prob)
+        mean = np.sum(search_grid * prob, axis=0)
+        variance = np.sum((search_grid - mean) ** 2 * prob, axis=0)
+        uncertainty = np.sqrt(variance)
+        event_uncertainty.append(uncertainty)
 
         # tt = np.reshape(tt, (nx, ny, nz, num_picks))
         # dt = np.reshape(dt, (nx, ny, nz, num_picks))
@@ -388,6 +473,7 @@ if __name__ == "__main__":
 
     events = events_init.copy()
     events["time"] = events["time"] + pd.to_timedelta(np.squeeze(event_time_gs), unit="s")
+    events[["sigma_x_km", "sigma_y_km", "sigma_z_km"]] = np.array(event_uncertainty)
     events["x_km"] = np.array(event_loc_gs)[:, 0]
     events["y_km"] = np.array(event_loc_gs)[:, 1]
     events["z_km"] = np.array(event_loc_gs)[:, 2]
@@ -396,7 +482,7 @@ if __name__ == "__main__":
     )
     events["depth_km"] = events["z_km"]
     events.to_csv(
-        f"{result_path}/adloc_events_grid_search.csv",
+        f"{result_path}/adloc_events_gridsearch.csv",
         index=False,
         float_format="%.5f",
         date_format="%Y-%m-%dT%H:%M:%S.%f",

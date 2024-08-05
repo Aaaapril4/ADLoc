@@ -21,25 +21,48 @@ from utils import plotting_ransac
 
 # %%
 if __name__ == "__main__":
-    # %%
-    # data_path = "test_data/ridgecrest/"
-    # region = "synthetic"
-    region = "ridgecrest"
-    data_path = f"test_data/{region}/"
+    # # %%
+    # ##################################### DEMO DATA #####################################
+    # # region = "synthetic"
+    # region = "ridgecrest"
+    # data_path = f"test_data/{region}/"
+    # picks_file = os.path.join(data_path, "gamma_picks.csv")
+    # events_file = os.path.join(data_path, "gamma_events.csv")
+    # stations_file = os.path.join(data_path, "stations.csv")
+
+    # picks = pd.read_csv(picks_file, parse_dates=["phase_time"])
+    # events = pd.read_csv(events_file, parse_dates=["time"])
+    # stations = pd.read_csv(stations_file)
+    # events_init = events.copy()
+
+    # # picks = pd.read_csv(os.path.join(data_path, "phasenet_plus_picks.csv"), parse_dates=["phase_time"])
+
+    # config = json.load(open(os.path.join(data_path, "config.json")))
+    # config["mindepth"] = 0.0
+    # config["maxdepth"] = 30.0
+    # config["use_amplitude"] = True
+
+    # # ## Eikonal for 1D velocity model
+    # zz = [0.0, 5.5, 16.0, 32.0]
+    # vp = [5.5, 5.5, 6.7, 7.8]
+    # vp_vs_ratio = 1.73
+    # vs = [v / vp_vs_ratio for v in vp]
+    # h = 0.3
+
+    # ##################################### DEMO DATA #####################################
 
     ##################################### GaMMA Paper DATA #####################################
-    os.system(
-        f"[ -f {data_path}/events_osf.csv ] || curl -L https://osf.io/download/945dq/ -o {data_path}/events_osf.csv"
-    )
-    os.system(
-        f"[ -f {data_path}/picks_osf.csv ] || curl -L https://osf.io/download/gwxtn/ -o {data_path}/picks_osf.csv"
-    )
-    os.system(
-        f"[ -f {data_path}/stations_osf.csv ] || curl -L https://osf.io/download/km97w/ -o {data_path}/stations_osf.csv"
-    )
-    picks_file = os.path.join(data_path, "picks_osf.csv")
-    events_file = os.path.join(data_path, "events_osf.csv")
-    stations_file = os.path.join(data_path, "stations_osf.csv")
+    region = "gamma_paper/"
+    data_path = f"./{region}/"
+    if not os.path.exists(data_path):
+        os.makedirs(data_path)
+    picks_file = os.path.join(data_path, "picks.csv")
+    events_file = os.path.join(data_path, "events.csv")
+    stations_file = os.path.join(data_path, "stations.csv")
+
+    os.system(f"[ -f {events_file} ] || curl -L https://osf.io/download/945dq/ -o {events_file}")
+    os.system(f"[ -f {picks_file} ] || curl -L https://osf.io/download/gwxtn/ -o {picks_file}")
+    os.system(f"[ -f {stations_file} ] || curl -L https://osf.io/download/km97w/ -o {stations_file}")
 
     picks = pd.read_csv(picks_file, sep="\t")
     picks.rename(
@@ -56,32 +79,71 @@ if __name__ == "__main__":
     )
     picks["phase_type"] = picks["phase_type"].str.upper()
     picks["phase_time"] = pd.to_datetime(picks["phase_time"])
-    events_init = pd.read_csv(events_file, sep="\t")
-    events_init.rename({"event_idx": "event_index"}, axis=1, inplace=True)
-    events_init["depth_km"] = events_init["depth(m)"] / 1000.0
-    events_init["time"] = pd.to_datetime(events_init["time"])
+    events = pd.read_csv(events_file, sep="\t")
+    events.rename({"event_idx": "event_index"}, axis=1, inplace=True)
+    events["depth_km"] = events["depth(m)"] / 1000.0
+    events["time"] = pd.to_datetime(events["time"])
 
     # picks = picks[picks["phase_time"] < pd.to_datetime("2019-07-05 00:00:00")]
-    # events_init = events_init[events_init["time"] < pd.to_datetime("2019-07-05 00:00:00")]
+    # events = events[events["time"] < pd.to_datetime("2019-07-05 00:00:00")]
 
     stations = pd.read_csv(stations_file, sep="\t")
     stations.rename({"station": "station_id", "elevation(m)": "elevation_m"}, axis=1, inplace=True)
+
+    config = {
+        "minlatitude": 35.205,
+        "maxlatitude": 36.205,
+        "minlongitude": -118.004,
+        "maxlongitude": -117.004,
+        "mindepth": 0.0,
+        "maxdepth": 30.0,
+    }
+    config["use_amplitude"] = True
+
+    # ## Eikonal for 1D velocity model
+    zz = [0.0, 5.5, 16.0, 32.0]
+    vp = [5.5, 5.5, 6.7, 7.8]
+    vp_vs_ratio = 1.73
+    vs = [v / vp_vs_ratio for v in vp]
+    h = 0.3
+
     ##################################### GaMMA Paper DATA #####################################
 
-    # picks_file = os.path.join(data_path, "gamma_picks.csv")
-    # events_file = os.path.join(data_path, "gamma_events.csv")
-    # stations_file = os.path.join(data_path, "stations.csv")
+    # ##################################### Stanford DATA #####################################
+    # region = "stanford"
+    # data_path = f"./{region}/"
 
-    config = json.load(open(os.path.join(data_path, "config.json")))
-    # picks = pd.read_csv(picks_file, parse_dates=["phase_time"])
-    # events_init = pd.read_csv(events_file, parse_dates=["time"])
-    # picks = pd.read_csv(os.path.join(data_path, "phasenet_plus_picks.csv"), parse_dates=["phase_time"])
-    # stations = pd.read_csv(stations_file)
-    stations["depth_km"] = -stations["elevation_m"] / 1000
-    if "station_term_time" not in stations.columns:
-        stations["station_term_time"] = 0.0
-    if "station_term_amplitude" not in stations.columns:
-        stations["station_term_amplitude"] = 0.0
+    # picks = pd.read_csv(f"{data_path}/phase.csv", parse_dates=["time"])
+    # stations = pd.read_csv(f"{data_path}/station.csv")
+    # events = None
+
+    # picks.rename({"time": "phase_time", "evid": "event_index", "phase": "phase_type"}, axis=1, inplace=True)
+    # picks["phase_time"] = pd.to_datetime(picks["phase_time"])
+    # picks["station_id"] = picks["network"] + "." + picks["station"]
+    # picks["phase_score"] = 1.0
+
+    # stations.rename({"elevation": "elevation_m"}, axis=1, inplace=True)
+    # stations["station_id"] = stations["network"] + "." + stations["station"]
+
+    # config = {
+    #     "maxlongitude": -117.10,
+    #     "minlongitude": -118.2,
+    #     "maxlatitude": 36.4,
+    #     "minlatitude": 35.3,
+    #     "mindepth": 0.0,
+    #     "maxdepth": 15.0,
+    # }
+    # config["use_amplitude"] = False
+
+    # ## Eikonal for 1D velocity model
+    # zz = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 30.0]
+    # vp = [4.746, 4.793, 4.799, 5.045, 5.721, 5.879, 6.504, 6.708, 6.725, 7.800]
+    # vs = [2.469, 2.470, 2.929, 2.930, 3.402, 3.403, 3.848, 3.907, 3.963, 4.500]
+    # h = 0.3
+
+    # ##################################### Stanford DATA #####################################
+
+    # %%
     result_path = f"results/{region}/"
     if not os.path.exists(result_path):
         os.makedirs(result_path)
@@ -91,18 +153,28 @@ if __name__ == "__main__":
 
     # %%
     ## Automatic region; you can also specify a region
-    lon0 = stations["longitude"].median()
-    lat0 = stations["latitude"].median()
+    # lon0 = stations["longitude"].median()
+    # lat0 = stations["latitude"].median()
+    lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
+    lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
     proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
+
+    # %%
+    stations["depth_km"] = -stations["elevation_m"] / 1000
+    if "station_term_time" not in stations.columns:
+        stations["station_term_time"] = 0.0
+    if "station_term_amplitude" not in stations.columns:
+        stations["station_term_amplitude"] = 0.0
     stations[["x_km", "y_km"]] = stations.apply(
         lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
     )
     stations["z_km"] = stations["elevation_m"].apply(lambda x: -x / 1e3)
 
-    events_init[["x_km", "y_km"]] = events_init.apply(
-        lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
-    )
-    events_init["z_km"] = events_init["depth_km"]
+    if events is not None:
+        events[["x_km", "y_km"]] = events.apply(
+            lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
+        )
+        events["z_km"] = events["depth_km"]
 
     ## set up the config; you can also specify the region manually
     if ("xlim_km" not in config) or ("ylim_km" not in config) or ("zlim_km" not in config):
@@ -110,9 +182,7 @@ if __name__ == "__main__":
         # project minlatitude, maxlatitude, minlongitude, maxlongitude to ymin, ymax, xmin, xmax
         xmin, ymin = proj(config["minlongitude"], config["minlatitude"])
         xmax, ymax = proj(config["maxlongitude"], config["maxlatitude"])
-        zmin = stations["z_km"].min()
-        zmax = 20
-        config = {}
+        zmin, zmax = config["mindepth"], config["maxdepth"]
         config["xlim_km"] = (xmin, xmax)
         config["ylim_km"] = (ymin, ymax)
         config["zlim_km"] = (zmin, zmax)
@@ -121,12 +191,7 @@ if __name__ == "__main__":
 
     # %%
     config["eikonal"] = None
-    # ## Eikonal for 1D velocity model
-    zz = [0.0, 5.5, 16.0, 32.0]
-    vp = [5.5, 5.5, 6.7, 7.8]
-    vp_vs_ratio = 1.73
-    vs = [v / vp_vs_ratio for v in vp]
-    h = 0.3
+
     vel = {"Z": zz, "P": vp, "S": vs}
     config["eikonal"] = {
         "vel": vel,
@@ -136,8 +201,6 @@ if __name__ == "__main__":
         "zlim_km": config["zlim_km"],
     }
     config["eikonal"] = init_eikonal2d(config["eikonal"])
-
-    config["use_amplitude"] = True
 
     # %% config for location
     config["min_picks"] = 8
@@ -171,21 +234,28 @@ if __name__ == "__main__":
     mapping_phase_type_int = {"P": 0, "S": 1}
     config["vel"] = {mapping_phase_type_int[k]: v for k, v in config["vel"].items()}
     picks["phase_type"] = picks["phase_type"].map(mapping_phase_type_int)
-    picks["phase_amplitude"] = picks["phase_amplitude"].apply(lambda x: np.log10(x) + 2.0)  # convert to log10(cm/s)
+    if "phase_amplitude" in picks.columns:
+        picks["phase_amplitude"] = picks["phase_amplitude"].apply(lambda x: np.log10(x) + 2.0)  # convert to log10(cm/s)
 
     # %%
-    # stations["station_term"] = 0.0
-    stations["idx_sta"] = stations.index  # reindex in case the index does not start from 0 or is not continuous
-    picks = picks.merge(stations[["station_id", "idx_sta"]], on="station_id")
+    # reindex in case the index does not start from 0 or is not continuous
+    stations["idx_sta"] = np.arange(len(stations))
+    if events is not None:
+        # reindex in case the index does not start from 0 or is not continuous
+        events["idx_eve"] = np.arange(len(events))
 
-    if events_init is not None:
-        events_init.reset_index(inplace=True)
-        events_init["idx_eve"] = (
-            events_init.index
-        )  # reindex in case the index does not start from 0 or is not continuous
-        picks = picks.merge(events_init[["event_index", "idx_eve"]], on="event_index")
     else:
-        picks["idx_eve"] = picks["event_index"]
+        picks = picks.merge(stations[["station_id", "x_km", "y_km", "z_km"]], on="station_id")
+        events = picks.groupby("event_index").agg({"x_km": "mean", "y_km": "mean", "z_km": "mean", "phase_time": "min"})
+        picks.drop(["x_km", "y_km", "z_km"], axis=1, inplace=True)
+        events["z_km"] = 10.0  # km default depth
+        events.rename({"phase_time": "time"}, axis=1, inplace=True)
+        events["event_index"] = events.index
+        events.reset_index(drop=True, inplace=True)
+        events["idx_eve"] = np.arange(len(events))
+
+    picks = picks.merge(events[["event_index", "idx_eve"]], on="event_index")
+    picks = picks.merge(stations[["station_id", "idx_sta"]], on="station_id")
 
     # %%
     estimator = ADLoc(config, stations=stations[["x_km", "y_km", "z_km"]].values, eikonal=config["eikonal"])
@@ -194,11 +264,11 @@ if __name__ == "__main__":
     NCPU = mp.cpu_count()
     MAX_SST_ITER = 10
     # MIN_SST_S = 0.01
-    iter = 0
-    events = None
-    while iter < MAX_SST_ITER:
+    events_init = events.copy()
+
+    for iter in range(MAX_SST_ITER):
         # picks, events = invert_location_iter(picks, stations, config, estimator, events_init=events_init, iter=iter)
-        picks, events = invert_location(picks, stations, config, estimator, events_init=events_init, iter=iter)
+        picks, events = invert_location(picks, stations, config, estimator, events_init=events, iter=iter)
         # station_term = picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_time": "mean"}).reset_index()
         station_term_time = picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_time": "mean"}).reset_index()
         station_term_amp = (
@@ -225,7 +295,7 @@ if __name__ == "__main__":
         #     .fillna(0)
         # )
 
-        plotting_ransac(stations, figure_path, config, picks, events_init, events, iter=iter)
+        plotting_ransac(stations, figure_path, config, picks, events_init, events, suffix=f"_ransac_sst_{iter}")
 
         if iter == 0:
             MIN_SST_S = (
@@ -237,21 +307,28 @@ if __name__ == "__main__":
             # break
         iter += 1
 
+    plotting_ransac(stations, figure_path, config, picks, events_init, events, suffix=f"_ransac_sst")
+
     # %%
-    picks.rename({"mask": "adloc_mask", "residual_s": "adloc_residual_s"}, axis=1, inplace=True)
-    picks["phase_type"] = picks["phase_type"].map({0: "P", 1: "S"})
-    picks.drop(["idx_eve", "idx_sta"], axis=1, inplace=True, errors="ignore")
+    if "event_index" not in events.columns:
+        events["event_index"] = events.merge(picks[["idx_eve", "event_index"]], on="idx_eve")["event_index"]
     events[["longitude", "latitude"]] = events.apply(
         lambda x: pd.Series(proj(x["x_km"], x["y_km"], inverse=True)), axis=1
     )
     events["depth_km"] = events["z_km"]
     events.drop(["idx_eve", "x_km", "y_km", "z_km"], axis=1, inplace=True, errors="ignore")
+    events.sort_values(["time"], inplace=True)
+
+    picks.rename({"mask": "adloc_mask", "residual_s": "adloc_residual_s"}, axis=1, inplace=True)
+    picks["phase_type"] = picks["phase_type"].map({0: "P", 1: "S"})
+    picks.drop(["idx_eve", "idx_sta"], axis=1, inplace=True, errors="ignore")
+    picks.sort_values(["phase_time"], inplace=True)
+
     stations.drop(["idx_sta", "x_km", "y_km", "z_km"], axis=1, inplace=True, errors="ignore")
     # stations.rename({"station_term": "adloc_station_term_s"}, axis=1, inplace=True)
-    picks.sort_values(["phase_time"], inplace=True)
-    events.sort_values(["time"], inplace=True)
-    picks.to_csv(os.path.join(result_path, "adloc_picks.csv"), index=False)
-    events.to_csv(os.path.join(result_path, "adloc_events.csv"), index=False)
-    stations.to_csv(os.path.join(result_path, "adloc_stations.csv"), index=False)
+
+    picks.to_csv(os.path.join(result_path, "ransac_picks_sst.csv"), index=False)
+    events.to_csv(os.path.join(result_path, "ransac_events_sst.csv"), index=False)
+    stations.to_csv(os.path.join(result_path, "ransac_stations_sst.csv"), index=False)
 
 # %%

@@ -82,16 +82,14 @@ class ADLoc(BaseEstimator):
 
         station_index = X[:, 0].astype(int)
         phase_type = X[:, 1].astype(int)
-        if X.shape[1] > 2:
-            phase_weight = X[:, 2]
-        else:
-            phase_weight = np.ones(len(X))
+        phase_weight = X[:, 2]
 
         if eikonal is None:
             v = np.array([vel[t] for t in phase_type])
             tt = np.linalg.norm(event[:3] - stations[station_index, :3], axis=-1) / v + event[3]
         else:
             tt = traveltime(0, station_index, phase_type, event[np.newaxis, :3], stations, eikonal) + event[3]
+
         t_diff = tt - y
         l1 = np.squeeze((np.abs(t_diff) > sigma))
         l2 = np.squeeze((np.abs(t_diff) <= sigma))
@@ -123,7 +121,7 @@ class ADLoc(BaseEstimator):
             yt = y[:, 0]  # time
             ya = y[:, 1]  # amplitude
         else:
-            yt = y
+            yt = y[:, 0]
 
         opt = scipy.optimize.minimize(
             # self.huber_loss_grad,
@@ -146,10 +144,7 @@ class ADLoc(BaseEstimator):
 
         if self.use_amplitude:
             station_index = X[:, 0].astype(int)
-            if X.shape[1] > 2:
-                phase_weight = X[:, 2:3]
-            else:
-                phase_weight = np.ones(len(X))
+            phase_weight = X[:, 2:3]
             self.magnitudes[event_index] = calc_mag(
                 ya[:, np.newaxis], self.events[event_index, :3], self.stations[station_index, :3], phase_weight
             )
@@ -181,7 +176,7 @@ class ADLoc(BaseEstimator):
             ).squeeze()
             return np.array([tt, amp]).T
         else:
-            return tt
+            return np.array([tt]).T
 
     def score(self, X, y=None, event_index=0):
         """

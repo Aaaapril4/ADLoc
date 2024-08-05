@@ -47,25 +47,72 @@ if __name__ == "__main__":
         master_process = True
         print("Non-DDP run")
 
-    # %%
-    # region = "synthetic"
-    region = "ridgecrest"
-    data_path = f"test_data/{region}"
-    result_path = f"results/{region}"
-    if not os.path.exists(result_path):
-        os.makedirs(result_path)
-    figure_path = f"figures/{region}/"
-    if not os.path.exists(figure_path):
-        os.makedirs(figure_path)
+    # # %%
+    # ##################################### DEMO DATA #####################################
+    # # region = "synthetic"
+    # region = "ridgecrest"
+    # data_path = f"test_data/{region}"
+    # result_path = f"results/{region}"
+    # figure_path = f"figures/{region}"
 
-    picks_file = os.path.join(data_path, "gamma_picks.csv")
-    events_file = os.path.join(data_path, "gamma_events.csv")
-    stations_file = os.path.join(data_path, "stations.csv")
+    # picks_file = os.path.join(data_path, "gamma_picks.csv")
+    # events_file = os.path.join(data_path, "gamma_events.csv")
+    # stations_file = os.path.join(data_path, "stations.csv")
+
+    # # picks_file = os.path.join(result_path, "ransac_picks_sst.csv")
+    # # events_file = os.path.join(result_path, "ransac_events_sst.csv")
+    # # stations_file = os.path.join(result_path, "ransac_stations_sst.csv")
+
+    # # %% generate the double-difference pair file
+    # if ddp_local_rank == 0:
+    #     if (not os.path.exists(os.path.join(result_path, "pair_dt.dat"))) or (
+    #         input("Regenerate the double-difference pair file (pair_dt.dat)? (N/y): ") == "y"
+    #     ):
+    #         os.system(
+    #             f"python generate_pairs.py --stations {stations_file} --events {events_file} --picks {picks_file} --result_path {result_path}"
+    #         )
+
+    # if ddp:
+    #     dist.barrier()
+
+    # # %% reading from the generated files
+    # events = pd.read_csv(os.path.join(result_path, "pair_events.csv"), parse_dates=["time"])
+    # stations = pd.read_csv(os.path.join(result_path, "pair_stations.csv"))
+    # picks = pd.read_csv(os.path.join(result_path, "pair_picks.csv"), parse_dates=["phase_time"])
+    # dtypes = pickle.load(open(os.path.join(result_path, "pair_dtypes.pkl"), "rb"))
+    # pairs = np.memmap(os.path.join(result_path, "pair_dt.dat"), mode="r", dtype=dtypes)
+
+    # config = json.load(open(os.path.join(data_path, "config.json")))
+    # config["mindepth"] = 0
+    # config["maxdepth"] = 30
+
+    # ## Eikonal for 1D velocity model
+    # zz = [0.0, 5.5, 16.0, 32.0]
+    # vp = [5.5, 5.5, 6.7, 7.8]
+    # vp_vs_ratio = 1.73
+    # vs = [v / vp_vs_ratio for v in vp]
+    # h = 0.3
+
+    # ##################################### DEMO DATA #####################################
+
+    ##################################### GaMMA Paper DATA #####################################
+    region = "gamma_paper/"
+    data_path = f"./{region}/"
+    result_path = f"results/{region}"
+    figure_path = f"figures/{region}/"
+
+    # picks_file = os.path.join(data_path, "gamma_picks.csv")
+    # events_file = os.path.join(data_path, "gamma_events.csv")
+    # stations_file = os.path.join(data_path, "stations.csv")
+
+    picks_file = os.path.join(result_path, "ransac_picks_sst.csv")
+    events_file = os.path.join(result_path, "ransac_events_sst.csv")
+    stations_file = os.path.join(result_path, "ransac_stations_sst.csv")
 
     # %% generate the double-difference pair file
     if ddp_local_rank == 0:
-        if (not os.path.exists(os.path.join(result_path, "adloc_dt.dat"))) or (
-            input("Regenerate the double-difference pair file (adloc_dt.dat)? (N/y): ") == "y"
+        if (not os.path.exists(os.path.join(result_path, "pair_dt.dat"))) or (
+            input("Regenerate the double-difference pair file (pair_dt.dat)? (N/y): ") == "y"
         ):
             os.system(
                 f"python generate_pairs.py --stations {stations_file} --events {events_file} --picks {picks_file} --result_path {result_path}"
@@ -75,35 +122,88 @@ if __name__ == "__main__":
         dist.barrier()
 
     # %% reading from the generated files
-    config = json.load(open(os.path.join(data_path, "config.json")))
     events = pd.read_csv(os.path.join(result_path, "pair_events.csv"), parse_dates=["time"])
     stations = pd.read_csv(os.path.join(result_path, "pair_stations.csv"))
     picks = pd.read_csv(os.path.join(result_path, "pair_picks.csv"), parse_dates=["phase_time"])
     dtypes = pickle.load(open(os.path.join(result_path, "pair_dtypes.pkl"), "rb"))
     pairs = np.memmap(os.path.join(result_path, "pair_dt.dat"), mode="r", dtype=dtypes)
-    events_init = events.copy()
+
+    config = {
+        "minlatitude": 35.205,
+        "maxlatitude": 36.205,
+        "minlongitude": -118.004,
+        "maxlongitude": -117.004,
+        "mindepth": 0.0,
+        "maxdepth": 30.0,
+    }
+    config["use_amplitude"] = True
+
+    # ## Eikonal for 1D velocity model
+    zz = [0.0, 5.5, 16.0, 32.0]
+    vp = [5.5, 5.5, 6.7, 7.8]
+    vp_vs_ratio = 1.73
+    vs = [v / vp_vs_ratio for v in vp]
+    h = 0.3
+
+    ##################################### GaMMA Paper DATA #####################################
+
+    # ##################################### Stanford DATA #####################################
+    # region = "stanford"
+    # data_path = f"./{region}/"
+    # result_path = f"results/{region}"
+    # figure_path = f"figures/{region}/"
+
+    # stations = pd.read_csv(f"{data_path}/pair_stations.csv")
+    # events = pd.read_csv(f"{data_path}/pair_events.csv")
+
+    # dtypes = pickle.load(open(f"{data_path}/pair_dtypes.pkl", "rb"))
+    # pairs = np.memmap(f"{data_path}/pair_dt.dat", mode="r", dtype=dtypes)
+    # picks = None
+
+    # config = {
+    #     "maxlongitude": -117.10,
+    #     "minlongitude": -118.2,
+    #     "maxlatitude": 36.4,
+    #     "minlatitude": 35.3,
+    #     "mindepth": 0,
+    #     "maxdepth": 15,
+    # }
+
+    # ## Eikonal for 1D velocity model
+    # zz = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 30.0]
+    # vp = [4.746, 4.793, 4.799, 5.045, 5.721, 5.879, 6.504, 6.708, 6.725, 7.800]
+    # vs = [2.469, 2.470, 2.929, 2.930, 3.402, 3.403, 3.848, 3.907, 3.963, 4.500]
+    # h = 0.3
+
+    # ##################################### Stanford DATA #####################################
+
+    # %%
+    if not os.path.exists(result_path):
+        os.makedirs(result_path)
+    if not os.path.exists(figure_path):
+        os.makedirs(figure_path)
 
     # %%
     ## Automatic region; you can also specify a region
     # lon0 = stations["longitude"].median()
     # lat0 = stations["latitude"].median()
-    # proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
     lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
     lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
-    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0} +lat_ts={lat0} +units=km")
+    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0} +units=km")
 
     stations["x_km"], stations["y_km"] = proj(stations["longitude"], stations["latitude"])
     stations["z_km"] = stations["depth_km"]
+    events["time"] = pd.to_datetime(events["time"])
     events["x_km"], events["y_km"] = proj(events["longitude"], events["latitude"])
     events["z_km"] = events["depth_km"]
+
+    events_init = events.copy()
 
     ## set up the config; you can also specify the region manually
     if ("xlim_km" not in config) or ("ylim_km" not in config) or ("zlim_km" not in config):
         xmin, ymin = proj(config["minlongitude"], config["minlatitude"])
         xmax, ymax = proj(config["maxlongitude"], config["maxlatitude"])
-        zmin = stations["z_km"].min()
-        zmax = 20
-        config = {}
+        zmin, zmax = config["mindepth"], config["maxdepth"]
         config["xlim_km"] = (xmin, xmax)
         config["ylim_km"] = (ymin, ymax)
         config["zlim_km"] = (zmin, zmax)
@@ -115,11 +215,14 @@ if __name__ == "__main__":
     # %%
     config["eikonal"] = None
     ## Eikonal for 1D velocity model
-    zz = [0.0, 5.5, 16.0, 32.0]
-    vp = [5.5, 5.5, 6.7, 7.8]
-    vp_vs_ratio = 1.73
-    vs = [v / vp_vs_ratio for v in vp]
-    h = 0.3
+    # zz = [0.0, 5.5, 16.0, 32.0]
+    # vp = [5.5, 5.5, 6.7, 7.8]
+    # vp_vs_ratio = 1.73
+    # vs = [v / vp_vs_ratio for v in vp]
+    # zz = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 30.0]
+    # vp = [4.746, 4.793, 4.799, 5.045, 5.721, 5.879, 6.504, 6.708, 6.725, 7.800]
+    # vs = [2.469, 2.470, 2.929, 2.930, 3.402, 3.403, 3.848, 3.907, 3.963, 4.500]
+    # h = 0.3
     vel = {"Z": zz, "P": vp, "S": vs}
     config["eikonal"] = {
         "vel": vel,
@@ -139,10 +242,6 @@ if __name__ == "__main__":
     )
 
     # %%
-    if ddp_local_rank == 0:
-        plotting_dd(events, stations, config, figure_path, events_init, iter=0)
-
-    # %%
     phase_dataset = PhaseDatasetDD(pairs, picks, events, stations, rank=ddp_local_rank, world_size=ddp_world_size)
     data_loader = DataLoader(phase_dataset, batch_size=None, shuffle=False, num_workers=0)
 
@@ -150,14 +249,12 @@ if __name__ == "__main__":
     num_event = len(events)
     num_station = len(stations)
     station_loc = stations[["x_km", "y_km", "z_km"]].values
-    # event_loc_init = np.zeros((num_event, 3))
-    # event_loc_init[:, 2] = np.mean(config["zlim_km"])
-    event_loc_init = events[["x_km", "y_km", "z_km"]].values  # + np.random.randn(num_event, 3) * 2.0
+    event_loc = events[["x_km", "y_km", "z_km"]].values  # + np.random.randn(num_event, 3) * 2.0
     travel_time = TravelTimeDD(
         num_event,
         num_station,
-        station_loc,
-        event_loc=event_loc_init,  # Initial location
+        station_loc=station_loc,
+        event_loc=event_loc,
         # event_time=event_time,
         eikonal=config["eikonal"],
     )
@@ -166,9 +263,7 @@ if __name__ == "__main__":
     raw_travel_time = travel_time.module if ddp else travel_time
 
     if ddp_local_rank == 0:
-        print(
-            f"Dataset: {len(picks)} picks, {len(events)} events, {len(stations)} stations, {len(data_loader)} batches"
-        )
+        print(f"Dataset: {len(events)} events, {len(stations)} stations, {len(data_loader)} batches")
 
     ## invert loss
     ######################################################################################################
@@ -178,12 +273,7 @@ if __name__ == "__main__":
         loss = 0
         optimizer.zero_grad()
         # for meta in tqdm(phase_dataset, desc=f"Epoch {i}"):
-        if ddp_local_rank == 0:
-            print(f"Epoch {i}: ", end="")
         for meta in data_loader:
-            if ddp_local_rank == 0:
-                print(".", end="")
-
             loss_ = travel_time(
                 meta["idx_sta"],
                 meta["idx_eve"],
@@ -196,32 +286,38 @@ if __name__ == "__main__":
 
             if ddp:
                 dist.all_reduce(loss_, op=dist.ReduceOp.SUM)
-                # loss_ /= ddp_world_size
+            # loss_ /= ddp_world_size
 
             loss += loss_
 
         optimizer.step()
-        raw_travel_time.event_loc.weight.data[:, 2].clamp_(min=config["zlim_km"][0], max=config["zlim_km"][1])
+        with torch.no_grad():
+            raw_travel_time.event_loc.weight.data[:, 2].clamp_(
+                min=config["zlim_km"][0] + 0.1, max=config["zlim_km"][1] - 0.1
+            )
         if ddp_local_rank == 0:
-            print(f"Loss: {loss}")
+            print(f"Epoch {i}: Loss {loss:.6e}")
 
         invert_event_loc = raw_travel_time.event_loc.weight.clone().detach().numpy()
         invert_event_time = raw_travel_time.event_time.weight.clone().detach().numpy()
 
-        # events["time"] = events["time"] + pd.to_timedelta(np.squeeze(invert_event_time), unit="s")
-        events["x_km"] = invert_event_loc[:, 0]
-        events["y_km"] = invert_event_loc[:, 1]
-        events["z_km"] = invert_event_loc[:, 2]
-        # events[["longitude", "latitude"]] = events.apply(
-        #     lambda x: pd.Series(proj(x["x_km"], x["y_km"], inverse=True)), axis=1
-        # )
-        # events["depth_km"] = events["z_km"]
-        # events.to_csv(
-        #     f"{result_path}/adloc_dd_events.csv", index=False, float_format="%.5f", date_format="%Y-%m-%dT%H:%M:%S.%f"
-        # )
-
-        if ddp_local_rank == 0 and (i % 10 == 9):
-            plotting_dd(events, stations, config, figure_path, events_init, iter=i + 1)
+        if ddp_local_rank == 0 and (i % 10 == 0):
+            events = events_init.copy()
+            events["time"] = events["time"] + pd.to_timedelta(np.squeeze(invert_event_time), unit="s")
+            events["x_km"] = invert_event_loc[:, 0]
+            events["y_km"] = invert_event_loc[:, 1]
+            events["z_km"] = invert_event_loc[:, 2]
+            events[["longitude", "latitude"]] = events.apply(
+                lambda x: pd.Series(proj(x["x_km"], x["y_km"], inverse=True)), axis=1
+            )
+            events["depth_km"] = events["z_km"]
+            events.to_csv(
+                f"{result_path}/adloc_dd_events_{i//10}.csv",
+                index=False,
+                float_format="%.5f",
+                date_format="%Y-%m-%dT%H:%M:%S.%f",
+            )
+            plotting_dd(events, stations, config, figure_path, events_init, suffix=f"_dd_{i//10}")
 
     # ######################################################################################################
     # optimizer = optim.LBFGS(params=raw_travel_time.parameters(), max_iter=10, line_search_fn="strong_wolfe")
@@ -261,9 +357,13 @@ if __name__ == "__main__":
 
     # %%
     if ddp_local_rank == 0:
+
+        plotting_dd(events, stations, config, figure_path, events_init, suffix="_dd")
+
         invert_event_loc = raw_travel_time.event_loc.weight.clone().detach().numpy()
         invert_event_time = raw_travel_time.event_time.weight.clone().detach().numpy()
 
+        events = events_init.copy()
         events["time"] = events["time"] + pd.to_timedelta(np.squeeze(invert_event_time), unit="s")
         events["x_km"] = invert_event_loc[:, 0]
         events["y_km"] = invert_event_loc[:, 1]
