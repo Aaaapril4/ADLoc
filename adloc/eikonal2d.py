@@ -204,26 +204,38 @@ def calc_traveltime(event_locs, station_locs, phase_type, eikonal):
     eikonal: dictionary of eikonal solver
     """
 
-    x = event_locs[:, 0] - station_locs[:, 0]
-    y = event_locs[:, 1] - station_locs[:, 1]
-    z = event_locs[:, 2] - station_locs[:, 2]
-    r = np.sqrt(x**2 + y**2)
+    if eikonal is None:
+        v = np.array([vel[x] for x in phase_type])
+        tt = np.linalg.norm(event_locs - station_locs, axis=-1, keepdims=False) / v
+    else:
+        x = event_locs[:, 0] - station_locs[:, 0]
+        y = event_locs[:, 1] - station_locs[:, 1]
+        z = event_locs[:, 2] - station_locs[:, 2]
+        r = np.sqrt(x**2 + y**2)
 
-    rgrid0 = eikonal["rgrid"][0]
-    zgrid0 = eikonal["zgrid"][0]
-    nr = eikonal["nr"]
-    nz = eikonal["nz"]
-    h = eikonal["h"]
+        rgrid0 = eikonal["rgrid"][0]
+        zgrid0 = eikonal["zgrid"][0]
+        nr = eikonal["nr"]
+        nz = eikonal["nz"]
+        h = eikonal["h"]
 
-    if isinstance(phase_type, list):
-        phase_type = np.array(phase_type)
+        if isinstance(phase_type, list):
+            phase_type = np.array(phase_type)
 
-    tt = np.zeros(len(phase_type), dtype=np.float32)
-    p_index = phase_type == 0
-    s_index = phase_type == 1
+        tt = np.zeros(len(phase_type), dtype=np.float32)
+        if isinstance(phase_type[0], str):
+            p_index = phase_type == "P"
+            s_index = phase_type == "S"
+        elif isinstance(phase_type[0].item(), int):
+            p_index = phase_type == 0
+            s_index = phase_type == 1
+        else:
+            raise ValueError("phase_type must be either P/S or 0/1")
 
-    tt[p_index] = _interp(eikonal["up"], r[p_index], z[p_index], rgrid0, zgrid0, nr, nz, h)
-    tt[s_index] = _interp(eikonal["us"], r[s_index], z[s_index], rgrid0, zgrid0, nr, nz, h)
+        if len(tt[p_index]) > 0:
+            tt[p_index] = _interp(eikonal["up"], r[p_index], z[p_index], rgrid0, zgrid0, nr, nz, h)
+        if len(tt[s_index]) > 0:
+            tt[s_index] = _interp(eikonal["us"], r[s_index], z[s_index], rgrid0, zgrid0, nr, nz, h)
 
     return tt
 
@@ -296,7 +308,7 @@ def init_eikonal2d(config):
     zz, vp, vs = np.array(vel["Z"]), np.array(vel["P"]), np.array(vel["S"])
 
     # ##############################################
-    # ## make the velocity staircase not linear 
+    # ## make the velocity staircase not linear
     # zz_grid = zz[1:] - h
     # vp_grid = vp[:-1]
     # vs_grid = vs[:-1]
