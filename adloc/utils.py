@@ -53,10 +53,10 @@ def invert(picks, stations, config, estimator, event_index, event_init):
         )
     t0 = X["phase_time"].min()
 
-    if event_init is not None:
-        event_init = np.array([[event_init[0], event_init[1], event_init[2], (event_init[3] - t0).total_seconds()]])
-    else:
+    if (event_init is None) or len(X) == 0:
         event_init = np.array([[np.median(X["x_km"]), np.median(X["y_km"]), 5.0, 0.0]])
+    else:
+        event_init = np.array([[event_init[0], event_init[1], event_init[2], (event_init[3] - t0).total_seconds()]])
 
     # xstd = np.std(X["x_km"])
     # ystd = np.std(X["y_km"])
@@ -202,9 +202,11 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
         for idx_eve, picks_by_event in picks.groupby("idx_eve"):
             if events_init is not None:
                 event_init = events_init[events_init["idx_eve"] == idx_eve]
-                if len(event_init) == 1:
+                if len(event_init) == 0:
+                    event_init = None
+                elif len(event_init) == 1:
                     event_init = event_init[["x_km", "y_km", "z_km", "time"]].values[0]
-                elif len(event_init) > 1:
+                else:
                     event_init = event_init[["x_km", "y_km", "z_km", "time"]].values[0]
                     print(f"Multiple initial locations for event_index {idx_eve}.")
             else:

@@ -273,7 +273,7 @@ if __name__ == "__main__":
 
     for iter in range(MAX_SST_ITER):
         # picks, events = invert_location_iter(picks, stations, config, estimator, events_init=events_init, iter=iter)
-        picks, events = invert_location(picks, stations, config, estimator, events_init=events, iter=iter)
+        picks, events = invert_location(picks, stations, config, estimator, events_init=events_init, iter=iter)
         # station_term = picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_time": "mean"}).reset_index()
         station_term_time = picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_time": "mean"}).reset_index()
         station_term_amp = (
