@@ -36,6 +36,11 @@ def invert(picks, stations, config, estimator, event_index, event_init):
     else:
         MAX_RESIDUAL = config["max_residual_time"]
 
+    if "station_term_time" not in stations.columns:
+        stations["station_term_time"] = 0.0
+    if config["use_amplitude"] and ("station_term_amplitude" not in stations.columns):
+        stations["station_term_amplitude"] = 0.0
+
     if config["use_amplitude"]:
         X = picks.merge(
             stations[["x_km", "y_km", "z_km", "station_id", "station_term_time", "station_term_amplitude"]],
@@ -203,8 +208,8 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
                 elif len(event_init) > 1:
                     event_init = event_init[["x_km", "y_km", "z_km", "time"]].values[0]
                     print(f"Multiple initial locations for event_index {idx_eve}.")
-                else:
-                    event_init = None
+            else:
+                event_init = None
 
             # picks_, event_ = invert(picks_by_event, stations, config, estimator, idx_eve, event_init)
             # if event_ is not None:
@@ -228,6 +233,9 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
                 events_inverted.append(event_)
             picks_inverted.append(picks_)
 
+    if len(events_inverted) == 0:
+        return None, None
+
     events_inverted = pd.concat(events_inverted, ignore_index=True)
     picks_inverted = pd.concat(picks_inverted)
     if events_init is not None:
@@ -248,8 +256,8 @@ def invert_location_iter(picks, stations, config, estimator, events_init=None, i
             event_init = events_init[events_init["idx_eve"] == idx_eve]
             if len(event_init) > 0:
                 event_init = event_init[["x_km", "y_km", "z_km", "time"]].values[0]
-            else:
-                event_init = None
+        else:
+            event_init = None
 
         picks_, event_ = invert(picks_by_event, stations, config, estimator, idx_eve, event_init)
 
@@ -257,6 +265,8 @@ def invert_location_iter(picks, stations, config, estimator, events_init=None, i
             events_inverted.append(event_)
         picks_inverted.append(picks_)
 
+    if len(events_inverted) == 0:
+        return None, None
     events_inverted = pd.concat(events_inverted, ignore_index=True)
     picks_inverted = pd.concat(picks_inverted)
     if events_init is not None:
