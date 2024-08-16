@@ -207,13 +207,14 @@ if __name__ == "__main__":
     config["eikonal"] = init_eikonal2d(config["eikonal"])
 
     # %% config for location
-    config["min_picks"] = 8
+    config["min_picks"] = 5
     config["min_picks_ratio"] = 0.2
     config["max_residual_time"] = 1.0
     config["max_residual_amplitude"] = 1.0
     config["min_score"] = 0.6
-    config["min_s_picks"] = 2
-    config["min_p_picks"] = 2
+    config["min_p_picks"] = 1
+    config["min_s_picks"] = 1
+
 
     config["bfgs_bounds"] = (
         (config["xlim_km"][0] - 1, config["xlim_km"][1] + 1),  # x

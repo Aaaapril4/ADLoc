@@ -14,11 +14,10 @@ def invert(picks, stations, config, estimator, event_index, event_init):
     """
 
     def is_model_valid(estimator, X, y):
-        ## TODO: Implement a good way to check if the model is valid
-        # score = estimator.score(X, y)
-        # return score > config["min_score"]
-        # events [[x, y, z, t]]
-        return estimator.events[0][2] > 1.0  # depth > 1.0 km
+        check = True
+        check = check and (estimator.events[0][2] > 1.0)  # depth > 1.0 km
+        check = check and (estimator.score(X, y) > config["min_score"])
+        return check
 
     def is_data_valid(X, y):
         """
