@@ -2,7 +2,7 @@
 import json
 import multiprocessing as mp
 import os
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,7 +11,6 @@ from fastapi import FastAPI
 from pyproj import Proj
 
 import adloc
-
 from adloc.eikonal2d import init_eikonal2d
 from adloc.sacloc2d import ADLoc
 from adloc.utils import invert_location, invert_location_iter
@@ -21,7 +20,7 @@ app = FastAPI()
 
 @app.get("/")
 def greet_json():
-    return {"Hello": "World!"}
+    return {"message": "Hello ADLoc!"}
 
 
 @app.post("/predict/")
@@ -31,15 +30,16 @@ def predict(picks: dict, stations: dict, config: dict):
     picks = pd.DataFrame(picks)
     picks["phase_time"] = pd.to_datetime(picks["phase_time"])
     stations = pd.DataFrame(stations)
-    picks_, events_ = run_adloc(picks, stations, config)
-    picks_ = picks_.to_dict(orient="records")
+    events_, picks_ = run_adloc(picks, stations, config)
+    if events_ is None:
+        return {"events": None, "picks": None}
     events_ = events_.to_dict(orient="records")
+    picks_ = picks_.to_dict(orient="records")
 
-    return {"picks": picks_, "events": events_}
+    return {"events": events_, "picks": picks_}
 
 
 def set_config(region="ridgecrest"):
-
 
     config = {
         "min_picks": 8,
@@ -51,7 +51,6 @@ def set_config(region="ridgecrest"):
         "min_p_picks": 2,
         "use_amplitude": False,
     }
-
 
     # ## Domain
     if region.lower() == "ridgecrest":
@@ -66,7 +65,6 @@ def set_config(region="ridgecrest"):
                 "maxdepth_km": 30.0,
             }
         )
-
 
     lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
     lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
@@ -115,16 +113,16 @@ def set_config(region="ridgecrest"):
 
     return config
 
+
 config = set_config()
 
 
 # %%
 def run_adloc(picks, stations, config_):
 
-
     # %%
     config.update(config_)
-    
+
     proj = config["proj"]
 
     # %%
@@ -132,7 +130,6 @@ def run_adloc(picks, stations, config_):
         lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
     )
     stations["z_km"] = stations["elevation_m"].apply(lambda x: -x / 1e3)
-
 
     # %%
     mapping_phase_type_int = {"P": 0, "S": 1}
@@ -154,7 +151,7 @@ def run_adloc(picks, stations, config_):
 
     if (picks is None) or (events is None):
         return None, None
-        
+
     # %%
     if "event_index" not in events.columns:
         events["event_index"] = events.merge(picks[["idx_eve", "event_index"]], on="idx_eve")["event_index"]
@@ -162,14 +159,12 @@ def run_adloc(picks, stations, config_):
         lambda x: pd.Series(proj(x["x_km"], x["y_km"], inverse=True)), axis=1
     )
     events["depth_km"] = events["z_km"]
-    events.drop(["idx_eve", "x_km", "y_km", "z_km"], axis=1, inplace=True, errors="ignore")
+    events = events.drop(["idx_eve", "x_km", "y_km", "z_km"], axis=1, errors="ignore")
     events.sort_values(["time"], inplace=True)
 
     picks.rename({"mask": "adloc_mask", "residual_s": "adloc_residual_s"}, axis=1, inplace=True)
     picks["phase_type"] = picks["phase_type"].map({0: "P", 1: "S"})
-    picks.drop(["idx_eve", "idx_sta"], axis=1, inplace=True, errors="ignore")
+    picks = picks.drop(["idx_eve", "idx_sta"], axis=1, errors="ignore")
     picks.sort_values(["phase_time"], inplace=True)
 
-    return picks, events
-
-
+    return events, picks
