@@ -14,18 +14,33 @@ def invert(picks, stations, config, estimator, event_index, event_init):
     """
 
     def is_model_valid(estimator, X, y):
-        check = True
-        check = check and (estimator.events[0][2] > 1.0)  # depth > 1.0 km
-        check = check and (estimator.score(X, y) > config["min_score"])
-        return check
+        """
+        X: idx_sta, type, score, amp
+        """
+        # n0 = np.sum(X[:, 1] == 0)  # P
+        # n1 = np.sum(X[:, 1] == 1)  # S
+        n0 = np.sum(X[X[:, 1] == 0, 2])
+        n1 = np.sum(X[X[:, 1] == 1, 2])
+        if not (n0 >= config["min_p_picks"] and n1 >= config["min_s_picks"]):
+            return False
+
+        if estimator.events[0][2] < 1.0:  # depth > 1.0 km
+            return False
+
+        if estimator.score(X, y) < config["min_score"]:
+            return False
+
+        return True
 
     def is_data_valid(X, y):
         """
-        X: idx_sta, type, score
+        X: idx_sta, type, score, amp
         y: t_s
         """
-        n0 = np.sum(X[:, 1] == 0)  # P
-        n1 = np.sum(X[:, 1] == 1)  # S
+        # n0 = np.sum(X[:, 1] == 0)  # P
+        # n1 = np.sum(X[:, 1] == 1)  # S
+        n0 = np.sum(X[X[:, 1] == 0, 2])
+        n1 = np.sum(X[X[:, 1] == 1, 2])
         return n0 >= config["min_p_picks"] and n1 >= config["min_s_picks"]  # At least min P and S picks
 
     MIN_PICKS = config["min_picks"]
@@ -192,7 +207,7 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
     if "ncpu" in config:
         NCPU = config["ncpu"]
     else:
-        NCPU = min(32, mp.cpu_count() - 1)
+        NCPU = min(64, mp.cpu_count() * 2 - 1)
 
     jobs = []
     events_inverted = []

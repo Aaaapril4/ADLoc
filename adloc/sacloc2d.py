@@ -124,8 +124,8 @@ class ADLoc(BaseEstimator):
             yt = y[:, 0]
 
         opt = scipy.optimize.minimize(
-            # self.huber_loss_grad,
-            self.l2_loss_grad,
+            self.huber_loss_grad,
+            # self.l2_loss_grad,
             x0=self.events[event_index],
             method="L-BFGS-B",
             jac=True,
@@ -180,7 +180,7 @@ class ADLoc(BaseEstimator):
 
     def score(self, X, y=None, event_index=0):
         """
-        X: data_frame with columns ["timestamp", "x_km", "y_km", "z_km", "type"]
+        X: idx_sta, type, score, amp
         """
         if len(y) <= 1:
             return -np.inf
@@ -193,13 +193,20 @@ class ADLoc(BaseEstimator):
             ya = y[:, 1]
             R2_t = 1 - np.sum((yt - tt) ** 2) / (np.sum((y[:, 0] - np.mean(y[:, 0])) ** 2) + 1e-6)
             R2_a = 1 - np.sum((ya - amp) ** 2) / (np.sum((y[:, 1] - np.mean(y[:, 1])) ** 2) + 1e-6)
+            # weight = X[:, 2]
+            # mu_yt = np.average(yt, weights=weight)
+            # mu_ya = np.average(ya, weights=weight)
+            # R2_t = 1 - np.sum(weight * (yt - tt) ** 2) / (np.sum(weight * (yt - mu_yt) ** 2) + 1e-6)
+            # R2_a = 1 - np.sum(weight * (ya - amp) ** 2) / (np.sum(weight * (ya - mu_ya) ** 2) + 1e-6)
             R2 = (R2_t + R2_a) / 2
         else:
             tt = output
             yt = y
             R2 = 1 - np.sum((yt - tt) ** 2) / (np.sum((y - np.mean(y)) ** 2) + 1e-6)
+            # weight = X[:, 2]
+            # mu_y = np.average(yt, weights=weight)
+            # R2 = 1 - np.sum(weight * (yt - tt) ** 2) / (np.sum(weight * (yt - mu_y) ** 2) + 1e-6)
 
-        # print(f"{R2=}")
         return R2
 
 

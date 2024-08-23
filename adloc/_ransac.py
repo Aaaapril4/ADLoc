@@ -422,6 +422,7 @@ class RANSACRegressor(
         # number of data samples
         n_samples = X.shape[0]
         sample_idxs = np.arange(n_samples)
+        prob = X[:, 2] / np.sum(X[:, 2])  # X: idx_sta, type, score, amp
 
         self.n_trials_ = 0
         max_trials = self.max_trials
@@ -432,7 +433,8 @@ class RANSACRegressor(
                 break
 
             # choose random sample set
-            subset_idxs = sample_without_replacement(n_samples, min_samples, random_state=random_state)
+            # subset_idxs = sample_without_replacement(n_samples, min_samples, random_state=random_state)
+            subset_idxs = np.random.choice(sample_idxs, min_samples, replace=False, p=prob)
             X_subset = X[subset_idxs]
             y_subset = y[subset_idxs]
 
