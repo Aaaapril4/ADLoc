@@ -269,7 +269,7 @@ if __name__ == "__main__":
     ######################################################################################################
     optimizer = optim.Adam(params=travel_time.parameters(), lr=0.1)
     valid_index = np.ones(len(pairs), dtype=bool)
-    EPOCHS = 100
+    EPOCHS = 30
     for epoch in range(EPOCHS):
         loss = 0
         optimizer.zero_grad()
@@ -300,7 +300,7 @@ if __name__ == "__main__":
             )
             raw_travel_time.event_loc.weight.data[torch.isnan(raw_travel_time.event_loc.weight)] = 0.0
         if ddp_local_rank == 0:
-            print(f"Epoch {epoch}: Loss {loss:.6e}")
+            print(f"Epoch {epoch}: loss {loss:.6e} of {np.sum(valid_index)} picks, {loss / np.sum(valid_index):.6e}")
 
         ### filtering
         pred_time = []
@@ -316,7 +316,7 @@ if __name__ == "__main__":
             pred_time.append(meta["phase_time"].detach().numpy())
 
         pred_time = np.concatenate(pred_time)
-        valid_index = np.abs(pred_time - pairs["phase_dtime"]) < np.std((pred_time - pairs["phase_dtime"])[valid_index]) * ((np.cos(epoch * np.pi / EPOCHS) + 1.0) + 1.0) # 3std -> 1std
+        valid_index = np.abs(pred_time - pairs["phase_dtime"]) < np.std((pred_time - pairs["phase_dtime"])[valid_index]) * 3.0 #* (np.cos(epoch * np.pi / EPOCHS) + 2.0) # 3std -> 1std
         phase_dataset.valid_index = valid_index
         
         invert_event_loc = raw_travel_time.event_loc.weight.clone().detach().numpy()
