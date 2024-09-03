@@ -37,7 +37,7 @@ event_index2 = []
 station_index = []
 phase_type = []
 phase_score = []
-dd_time = []
+phase_dtime = []
 
 stations.set_index("station_id", inplace=True)
 events.set_index("event_index", inplace=True)
@@ -52,7 +52,7 @@ for line in tqdm(lines):
         station_index.append(stations.loc[stid, "idx_sta"])
         phase_type.append(mapping_phase_type_int[phase])
         phase_score.append(weight)
-        dd_time.append(dt)
+        phase_dtime.append(dt)
 
 
 dtypes = np.dtype(
@@ -62,13 +62,13 @@ dtypes = np.dtype(
         ("station_index", np.int32),
         ("phase_type", np.int32),
         ("phase_score", np.float32),
-        ("dd_time", np.float32),
+        ("phase_dtime", np.float32),
     ]
 )
 pairs_array = np.memmap(
     os.path.join(result_path, "pair_dt.dat"),
     mode="w+",
-    shape=(len(dd_time),),
+    shape=(len(phase_dtime),),
     dtype=dtypes,
 )
 pairs_array["event_index1"] = event_index1
@@ -76,7 +76,7 @@ pairs_array["event_index2"] = event_index2
 pairs_array["station_index"] = station_index
 pairs_array["phase_type"] = phase_type
 pairs_array["phase_score"] = phase_score
-pairs_array["dd_time"] = dd_time
+pairs_array["phase_dtime"] = phase_dtime
 with open(os.path.join(result_path, "pair_dtypes.pkl"), "wb") as f:
     pickle.dump(dtypes, f)
 

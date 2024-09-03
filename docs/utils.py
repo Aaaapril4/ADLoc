@@ -119,7 +119,7 @@ def plotting_dd(events, stations, config, figure_path, events_old, suffix=""):
     zmin, zmax = config["zlim_km"]
     vmin, vmax = zmin, zmax
 
-    s = max(0.1, min(10, 5000 / len(events)))
+    s = max(0.1, min(10, 2000 / len(events)))
     alpha = 0.8
 
     fig, ax = plt.subplots(3, 2, figsize=(10, 10), gridspec_kw={"height_ratios": [2, 1, 1]})

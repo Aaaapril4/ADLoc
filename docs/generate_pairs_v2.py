@@ -23,46 +23,37 @@ def parse_args():
 
 
 # %%
-def convert_dd(
-    pairs,
-    picks_by_event,
-    min_obs=8,
-    max_obs=20,
-    i=0,
-):
+def pairing_picks(event_pairs, picks, config):
+    picks = picks[["idx_eve", "idx_sta", "phase_type", "phase_score", "phase_time"]].copy()
+    merged = pd.merge(
+        event_pairs,
+        picks,
+        left_on="idx_eve1",
+        right_on="idx_eve",
+    )
+    merged = pd.merge(
+        merged,
+        picks,
+        left_on=["idx_eve2", "idx_sta", "phase_type"],
+        right_on=["idx_eve", "idx_sta", "phase_type"],
+        suffixes=("_1", "_2"),
+    )
+    merged = merged.rename(columns={"phase_time_1": "phase_time1", "phase_time_2": "phase_time2"})
+    merged["phase_score"] = (merged["phase_score_1"] + merged["phase_score_2"]) / 2.0
 
-    station_index = []
-    event_index1 = []
-    event_index2 = []
-    phase_type = []
-    phase_score = []
-    phase_dtime = []
-    for idx1, idx2 in tqdm(pairs, desc=f"CPU {i}", position=i):
-        picks1 = picks_by_event.get_group(idx1)
-        picks2 = picks_by_event.get_group(idx2)
+    merged["travel_time1"] = (merged["phase_time1"] - merged["event_time1"]).dt.total_seconds()
+    merged["travel_time2"] = (merged["phase_time2"] - merged["event_time2"]).dt.total_seconds()
+    merged["phase_dtime"] = merged["travel_time1"] - merged["travel_time2"]
 
-        common = picks1.merge(picks2, on=["idx_sta", "phase_type"], how="inner")
-        if len(common) < min_obs:
-            continue
-        common["phase_score"] = (common["phase_score_x"] + common["phase_score_y"]) / 2.0
-        common.sort_values("phase_score", ascending=False, inplace=True)
-        common = common.head(max_obs)
-        event_index1.extend(common["idx_eve_x"].values)
-        event_index2.extend(common["idx_eve_y"].values)
-        station_index.extend(common["idx_sta"].values)
-        phase_type.extend(common["phase_type"].values)
-        phase_score.extend(common["phase_score"].values)
-        phase_dtime.extend(np.round(common["travel_time_x"].values - common["travel_time_y"].values, 5))
+    # filtering
+    # merged = merged.sort_values("phase_score", ascending=False)
+    merged = (
+        merged.groupby(["idx_eve1", "idx_eve2"], group_keys=False)
+        .apply(lambda x: (x.nlargest(config["MAX_OBS"], "phase_score") if len(x) > config["MIN_OBS"] else None))
+        .reset_index(drop=True)
+    )
 
-    return {
-        "event_index1": event_index1,
-        "event_index2": event_index2,
-        "station_index": station_index,
-        "phase_type": phase_type,
-        "phase_score": phase_score,
-        "phase_dtime": phase_dtime,
-    }
-
+    return merged[["idx_eve1", "idx_eve2", "idx_sta", "phase_type", "phase_score", "phase_dtime"]]
 
 # %%
 if __name__ == "__main__":
@@ -78,6 +69,12 @@ if __name__ == "__main__":
     MIN_NEIGHBORS = 8
     MIN_OBS = 8
     MAX_OBS = 100
+    config = {}
+    config["MAX_PAIR_DIST"] = MAX_PAIR_DIST
+    config["MAX_NEIGHBORS"] = MAX_NEIGHBORS
+    config["MIN_NEIGHBORS"] = MIN_NEIGHBORS
+    config["MIN_OBS"] = MIN_OBS
+    config["MAX_OBS"] = MAX_OBS
     mapping_phase_type_int = {"P": 0, "S": 1}
 
     # %%
@@ -142,11 +139,14 @@ if __name__ == "__main__":
         if len(neighs) < MIN_NEIGHBORS:
             continue
         for j in neighs[:MAX_NEIGHBORS]:
-            if i > j:
-                pairs.add((j, i))
-            else:
+            if i < j:
                 pairs.add((i, j))
     pairs = list(pairs)
+    event_pairs = pd.DataFrame(list(pairs), columns=["idx_eve1", "idx_eve2"])
+    print(f"Number of events: {len(events)}")
+    print(f"Number of event pairs: {len(event_pairs)}")
+    event_pairs["event_time1"] = events["time"].iloc[event_pairs["idx_eve1"]].values
+    event_pairs["event_time2"] = events["time"].iloc[event_pairs["idx_eve2"]].values
 
     # Option 2:
     # neigh = NearestNeighbors(radius=MAX_PAIR_DIST, n_jobs=-1)
@@ -165,80 +165,59 @@ if __name__ == "__main__":
     # pairs = list(pairs)
 
     # %%
-    NCPU = min(32, mp.cpu_count())
-    with mp.Manager() as manager:
-
-        pool = mp.Pool(NCPU)
-        results = pool.starmap(
-            convert_dd,
-            [
-                (
-                    pairs[i::NCPU],
-                    picks_by_event,
-                    MIN_OBS,
-                    MAX_OBS,
-                    i,
-                )
-                for i in range(NCPU)
-            ],
-        )
+    chunk_size = 10_000
+    num_chunk = len(event_pairs) // chunk_size
+    pbar = tqdm(total=num_chunk, desc="Pairing picks")
+    results = []
+    jobs = []
+    ctx = mp.get_context("spawn")
+    ncpu = min(num_chunk, min(32, mp.cpu_count()))
+    picks = picks.set_index("idx_eve")
+    with ctx.Pool(processes=ncpu) as pool:
+        for i in np.array_split(np.arange(len(event_pairs)), num_chunk):
+            event_pairs_ = event_pairs.iloc[i]
+            idx = np.unique(event_pairs_[["idx_eve1", "idx_eve2"]].values.flatten())
+            picks_ = picks.loc[idx].reset_index()
+            job = pool.apply_async(pairing_picks, args=(event_pairs_, picks_, config), callback=lambda x: pbar.update())
+            jobs.append(job)
         pool.close()
         pool.join()
+        for job in jobs:
+            results.append(job.get())
 
-        print("Collecting results")
-        event_index1 = np.concatenate([r["event_index1"] for r in results])
-        event_index2 = np.concatenate([r["event_index2"] for r in results])
-        station_index = np.concatenate([r["station_index"] for r in results])
-        phase_type = np.concatenate([r["phase_type"] for r in results])
-        phase_score = np.concatenate([r["phase_score"] for r in results])
-        phase_dtime = np.concatenate([r["phase_dtime"] for r in results])
+    event_pairs = pd.concat(results, ignore_index=True)
+    event_pairs = event_pairs.drop_duplicates()
 
-        # Filter large P and S time differences
-        idx = ((phase_type == 0) & (np.abs(phase_dtime) < 1.0)) | ((phase_type == 1) & (np.abs(phase_dtime) < 1.5))
-        event_index1 = event_index1[idx]
-        event_index2 = event_index2[idx]
-        station_index = station_index[idx]
-        phase_type = phase_type[idx]
-        phase_score = phase_score[idx]
-        phase_dtime = phase_dtime[idx]
-        print(f"Saving to disk: {len(event_index1)} pairs")
-        # np.savez_compressed(
-        #     os.path.join(catalog_path, "adloc_dt.npz"),
-        #     event_index1=event_index1,
-        #     event_index2=event_index2,
-        #     station_index=station_index,
-        #     phase_type=phase_type,
-        #     phase_score=phase_score,
-        #     phase_dtime=phase_dtime,
-        # )
+    print(f"Number of pick pairs: {len(event_pairs)}")
 
-        dtypes = np.dtype(
-            [
-                ("event_index1", np.int32),
-                ("event_index2", np.int32),
-                ("station_index", np.int32),
-                ("phase_type", np.int32),
-                ("phase_score", np.float32),
-                ("phase_dtime", np.float32),
-            ]
-        )
-        pairs_array = np.memmap(
-            os.path.join(result_path, "pair_dt.dat"),
-            mode="w+",
-            shape=(len(phase_dtime),),
-            dtype=dtypes,
-        )
-        pairs_array["event_index1"] = event_index1
-        pairs_array["event_index2"] = event_index2
-        pairs_array["station_index"] = station_index
-        pairs_array["phase_type"] = phase_type
-        pairs_array["phase_score"] = phase_score
-        pairs_array["phase_dtime"] = phase_dtime
-        with open(os.path.join(result_path, "pair_dtypes.pkl"), "wb") as f:
-            pickle.dump(dtypes, f)
 
-        events.to_csv(os.path.join(result_path, "pair_events.csv"), index=False)
-        stations.to_csv(os.path.join(result_path, "pair_stations.csv"), index=False)
-        picks.to_csv(os.path.join(result_path, "pair_picks.csv"), index=False)
+    dtypes = np.dtype(
+        [
+            ("event_index1", np.int32),
+            ("event_index2", np.int32),
+            ("station_index", np.int32),
+            ("phase_type", np.int32),
+            ("phase_score", np.float32),
+            ("phase_dtime", np.float32),
+        ]
+    )
+    pairs_array = np.memmap(
+        os.path.join(result_path, "pair_dt.dat"),
+        mode="w+",
+        shape=(len(event_pairs),),
+        dtype=dtypes,
+    )
+    pairs_array["event_index1"] = event_pairs["idx_eve1"].values
+    pairs_array["event_index2"] = event_pairs["idx_eve2"].values
+    pairs_array["station_index"] = event_pairs["idx_sta"].values
+    pairs_array["phase_type"] = event_pairs["phase_type"].values
+    pairs_array["phase_score"] = event_pairs["phase_score"].values
+    pairs_array["phase_dtime"] = event_pairs["phase_dtime"].values
+    with open(os.path.join(result_path, "pair_dtypes.pkl"), "wb") as f:
+        pickle.dump(dtypes, f)
+
+    events.to_csv(os.path.join(result_path, "pair_events.csv"), index=False)
+    stations.to_csv(os.path.join(result_path, "pair_stations.csv"), index=False)
+    picks.to_csv(os.path.join(result_path, "pair_picks.csv"), index=False)
 
 # %%

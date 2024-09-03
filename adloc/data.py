@@ -203,6 +203,7 @@ class PhaseDatasetDD(Dataset):
         events,
         stations,
         batch_size=1000,
+        valid_index=None,
         config=None,
         rank=0,
         world_size=1,
@@ -213,6 +214,9 @@ class PhaseDatasetDD(Dataset):
         self.stations = stations
         self.config = config
         self.batch_size = batch_size
+        if valid_index is None:
+            valid_index = np.ones(len(self.pairs), dtype=bool)
+        self.valid_index = valid_index
 
         self.idx_batch = np.array_split(np.arange(len(self.pairs)), (len(self.pairs) - 1) // self.batch_size + 1)[
             rank::world_size
@@ -226,14 +230,14 @@ class PhaseDatasetDD(Dataset):
 
     def __getitem__(self, i):
 
-        idx = self.idx_batch[i]
+        idx = self.idx_batch[i][self.valid_index[self.idx_batch[i]]]
         idx1_eve = self.pairs["event_index1"][idx]
         idx2_eve = self.pairs["event_index2"][idx]
         idx_eve = np.stack([idx1_eve, idx2_eve], axis=1)
         idx_sta = self.pairs["station_index"][idx]
         phase_weight = self.pairs["phase_score"][idx]
         phase_type = self.pairs["phase_type"][idx]
-        phase_time = self.pairs["dd_time"][idx]
+        phase_time = self.pairs["phase_dtime"][idx]
 
         return {
             "idx_eve": torch.tensor(idx_eve, dtype=torch.long),

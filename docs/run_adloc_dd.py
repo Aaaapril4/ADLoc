@@ -69,7 +69,7 @@ if __name__ == "__main__":
     #         input("Regenerate the double-difference pair file (pair_dt.dat)? (N/y): ") == "y"
     #     ):
     #         os.system(
-    #             f"python generate_pairs.py --stations {stations_file} --events {events_file} --picks {picks_file} --result_path {result_path}"
+    #             f"python generate_pairs_v2.py --stations {stations_file} --events {events_file} --picks {picks_file} --result_path {result_path}"
     #         )
 
     # if ddp:
@@ -115,7 +115,7 @@ if __name__ == "__main__":
             input("Regenerate the double-difference pair file (pair_dt.dat)? (N/y): ") == "y"
         ):
             os.system(
-                f"python generate_pairs.py --stations {stations_file} --events {events_file} --picks {picks_file} --result_path {result_path}"
+                f"python generate_pairs_v2.py --stations {stations_file} --events {events_file} --picks {picks_file} --result_path {result_path}"
             )
 
     if ddp:
@@ -243,7 +243,7 @@ if __name__ == "__main__":
 
     # %%
     phase_dataset = PhaseDatasetDD(pairs, picks, events, stations, rank=ddp_local_rank, world_size=ddp_world_size)
-    data_loader = DataLoader(phase_dataset, batch_size=None, shuffle=False, num_workers=0)
+    data_loader = DataLoader(phase_dataset, batch_size=None, shuffle=False, num_workers=0, drop_last=False)
 
     # %%
     num_event = len(events)
@@ -268,19 +268,21 @@ if __name__ == "__main__":
     ## invert loss
     ######################################################################################################
     optimizer = optim.Adam(params=travel_time.parameters(), lr=0.1)
+    valid_index = np.ones(len(pairs), dtype=bool)
     EPOCHS = 100
-    for i in range(EPOCHS):
+    for epoch in range(EPOCHS):
         loss = 0
         optimizer.zero_grad()
         # for meta in tqdm(phase_dataset, desc=f"Epoch {i}"):
         for meta in data_loader:
-            loss_ = travel_time(
+            out = travel_time(
                 meta["idx_sta"],
                 meta["idx_eve"],
                 meta["phase_type"],
                 meta["phase_time"],
                 meta["phase_weight"],
-            )["loss"]
+            )
+            pred_, loss_ = out["phase_time"], out["loss"]
 
             loss_.backward()
 
@@ -298,12 +300,32 @@ if __name__ == "__main__":
             )
             raw_travel_time.event_loc.weight.data[torch.isnan(raw_travel_time.event_loc.weight)] = 0.0
         if ddp_local_rank == 0:
-            print(f"Epoch {i}: Loss {loss:.6e}")
+            print(f"Epoch {epoch}: Loss {loss:.6e}")
 
+        ### filtering
+        pred_time = []
+        phase_dataset.valid_index = np.ones(len(pairs), dtype=bool)
+        for meta in phase_dataset:
+            meta = travel_time(
+                meta["idx_sta"],
+                meta["idx_eve"],
+                meta["phase_type"],
+                meta["phase_time"],
+                meta["phase_weight"],
+            )
+            pred_time.append(meta["phase_time"].detach().numpy())
+
+        pred_time = np.concatenate(pred_time)
+        valid_index = np.abs(pred_time - pairs["phase_dtime"]) < np.std((pred_time - pairs["phase_dtime"])[valid_index]) * ((np.cos(epoch * np.pi / EPOCHS) + 1.0) + 1.0) # 3std -> 1std
+        phase_dataset.valid_index = valid_index
+        
         invert_event_loc = raw_travel_time.event_loc.weight.clone().detach().numpy()
         invert_event_time = raw_travel_time.event_time.weight.clone().detach().numpy()
+        valid_event_index = np.unique(pairs["event_index1"][valid_index]) 
+        valid_event_index = np.concatenate([np.unique(pairs["event_index1"][valid_index]), np.unique(pairs["event_index2"][valid_index])]) 
+        valid_event_index = np.sort(np.unique(valid_event_index))
 
-        if ddp_local_rank == 0 and (i % 10 == 0):
+        if ddp_local_rank == 0 and (epoch % 10 == 0):
             events = events_init.copy()
             events["time"] = events["time"] + pd.to_timedelta(np.squeeze(invert_event_time), unit="s")
             events["x_km"] = invert_event_loc[:, 0]
@@ -313,13 +335,14 @@ if __name__ == "__main__":
                 lambda x: pd.Series(proj(x["x_km"], x["y_km"], inverse=True)), axis=1
             )
             events["depth_km"] = events["z_km"]
+            events = events.iloc[valid_event_index]
             events.to_csv(
-                f"{result_path}/adloc_dd_events_{i//10}.csv",
+                f"{result_path}/adloc_dd_events_{epoch//10}.csv",
                 index=False,
                 float_format="%.5f",
                 date_format="%Y-%m-%dT%H:%M:%S.%f",
             )
-            plotting_dd(events, stations, config, figure_path, events_init, suffix=f"_dd_{i//10}")
+            plotting_dd(events, stations, config, figure_path, events_init, suffix=f"_dd_{epoch//10}")
 
     # ######################################################################################################
     # optimizer = optim.LBFGS(params=raw_travel_time.parameters(), max_iter=10, line_search_fn="strong_wolfe")
@@ -374,6 +397,7 @@ if __name__ == "__main__":
             lambda x: pd.Series(proj(x["x_km"], x["y_km"], inverse=True)), axis=1
         )
         events["depth_km"] = events["z_km"]
+        events = events.iloc[valid_event_index]
         events.to_csv(
             f"{result_path}/adloc_dd_events.csv", index=False, float_format="%.5f", date_format="%Y-%m-%dT%H:%M:%S.%f"
         )
