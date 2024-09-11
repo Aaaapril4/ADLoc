@@ -287,16 +287,16 @@ if __name__ == "__main__":
         )
         ## Separate P and S station term
         # station_term = (
-        #     picks[picks["mask"] == 1.0].groupby(["idx_sta", "phase_type"]).agg({"residual_s": "mean"}).reset_index()
+        #     picks[picks["mask"] == 1.0].groupby(["idx_sta", "phase_type"]).agg({"residual_time": "mean"}).reset_index()
         # )
         # stations["station_term_p"] = (
         #     stations["idx_sta"]
-        #     .map(station_term[station_term["phase_type"] == 0].set_index("idx_sta")["residual_s"])
+        #     .map(station_term[station_term["phase_type"] == 0].set_index("idx_sta")["residual_time"])
         #     .fillna(0)
         # )
         # stations["station_term_s"] = (
         #     stations["idx_sta"]
-        #     .map(station_term[station_term["phase_type"] == 1].set_index("idx_sta")["residual_s"])
+        #     .map(station_term[station_term["phase_type"] == 1].set_index("idx_sta")["residual_time"])
         #     .fillna(0)
         # )
 
@@ -324,7 +324,7 @@ if __name__ == "__main__":
     events.drop(["idx_eve", "x_km", "y_km", "z_km"], axis=1, inplace=True, errors="ignore")
     events.sort_values(["time"], inplace=True)
 
-    picks.rename({"mask": "adloc_mask", "residual_s": "adloc_residual_s"}, axis=1, inplace=True)
+    picks.rename({"mask": "adloc_mask", "residual_time": "adloc_residual_time", "residual_amplitude": "adloc_residual_amplitude"}, axis=1, inplace=True)
     picks["phase_type"] = picks["phase_type"].map({0: "P", 1: "S"})
     picks.drop(["idx_eve", "idx_sta"], axis=1, inplace=True, errors="ignore")
     picks.sort_values(["phase_time"], inplace=True)

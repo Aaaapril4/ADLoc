@@ -287,16 +287,16 @@ def main(args):
     weighted_mean = lambda x, w: np.sum(x * w) / np.sum(w)
     for i in range(MAX_SST_ITER):
         with torch.inference_mode():
-            picks["residual_s"] = (
-                travel_time(idx_sta, idx_eve, phase_type, phase_time, phase_weight)["residual_s"].detach().numpy()
+            picks["residual"] = (
+                travel_time(idx_sta, idx_eve, phase_type, phase_time, phase_weight)["residual"].detach().numpy()
             )
-        # station_term = picks.groupby("idx_sta").agg({"residual_s": "mean"}).reset_index()
+        # station_term = picks.groupby("idx_sta").agg({"residual": "mean"}).reset_index()
         station_term = (
             picks.groupby("idx_sta")
-            .apply(lambda x: weighted_mean(x["residual_s"], x["phase_score"]))
-            .reset_index(name="residual_s")
+            .apply(lambda x: weighted_mean(x["residual"], x["phase_score"]))
+            .reset_index(name="residual")
         )
-        stations["station_term"] += stations["idx_sta"].map(station_term.set_index("idx_sta")["residual_s"]).fillna(0)
+        stations["station_term"] += stations["idx_sta"].map(station_term.set_index("idx_sta")["residual"]).fillna(0)
         travel_time.station_dt.weight.data = torch.tensor(stations["station_term"].values, dtype=torch.float32).view(
             -1, 1
         )

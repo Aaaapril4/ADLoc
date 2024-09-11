@@ -146,6 +146,8 @@ def invert(picks, stations, config, estimator, event_index, event_init):
         else:
             mean_residual_amp = 0.0
         x, y, z, t = estimator.events[0]
+        if config["use_amplitude"]:
+            mag = estimator.magnitudes[0]
 
         event = {
             "idx_eve": event_index,  ## inside adloc, idx_eve is used which starts from 0 to N events
@@ -158,6 +160,7 @@ def invert(picks, stations, config, estimator, event_index, event_init):
             "num_picks": np.sum(inlier_mask),
         }
         if config["use_amplitude"]:
+            event["magnitude"] = mag
             event["adloc_residual_amplitude"] = mean_residual_amp
         event = pd.DataFrame([event])
     else:

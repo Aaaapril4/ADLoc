@@ -162,7 +162,7 @@ def run_adloc(picks, stations, config_):
     events = events.drop(["idx_eve", "x_km", "y_km", "z_km"], axis=1, errors="ignore")
     events.sort_values(["time"], inplace=True)
 
-    picks.rename({"mask": "adloc_mask", "residual_s": "adloc_residual_s"}, axis=1, inplace=True)
+    picks.rename({"mask": "adloc_mask", "residual_time": "adloc_residual_time", "residual_amplitude": "adloc_residual_amplitude"}, axis=1, inplace=True)
     picks["phase_type"] = picks["phase_type"].map({0: "P", 1: "S"})
     picks = picks.drop(["idx_eve", "idx_sta"], axis=1, errors="ignore")
     picks.sort_values(["phase_time"], inplace=True)

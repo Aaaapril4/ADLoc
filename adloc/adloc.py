@@ -189,7 +189,7 @@ class TravelTime(nn.Module):
                 resisudal[phase_type == type] = phase_time_ - t_
                 loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
 
-        return {"phase_time": pred_time, "residual_s": resisudal, "loss": loss}
+        return {"phase_time": pred_time, "residual": resisudal, "loss": loss}
 
 
 # %%

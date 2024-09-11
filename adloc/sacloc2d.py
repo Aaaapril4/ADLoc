@@ -178,6 +178,21 @@ class ADLoc(BaseEstimator):
         else:
             return np.array([tt]).T
 
+    def weight(self, X, event_index=0):
+        """
+        X: data_frame with columns ["timestamp", "x_km", "y_km", "z_km", "type"]
+        """
+        station_index = X[:, 0].astype(int)
+        phase_type = X[:, 1].astype(int)
+
+        if self.eikonal is None:
+            v = np.array([self.vel[t] for t in phase_type])
+            tt = np.linalg.norm(self.events[event_index, :3] - self.stations[station_index, :3], axis=-1) / v
+        else:
+            tt = traveltime(event_index, station_index, phase_type, self.events, self.stations, self.eikonal)
+
+        return np.array([tt]).T
+
     def score(self, X, y=None, event_index=0):
         """
         X: idx_sta, type, score, amp
