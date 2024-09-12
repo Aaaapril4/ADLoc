@@ -195,7 +195,7 @@ class PhaseDataset(Dataset):
         return self.meta[i]
 
 
-class PhaseDatasetDD(Dataset):
+class PhaseDatasetDT(Dataset):
     def __init__(
         self,
         pairs,
@@ -238,6 +238,28 @@ class PhaseDatasetDD(Dataset):
         phase_weight = self.pairs["phase_score"][idx]
         phase_type = self.pairs["phase_type"][idx]
         phase_time = self.pairs["phase_dtime"][idx]
+
+        return {
+            "idx_eve": torch.tensor(idx_eve, dtype=torch.long),
+            "idx_sta": torch.tensor(idx_sta, dtype=torch.long),
+            "phase_type": phase_type,
+            "phase_weight": torch.tensor(phase_weight, dtype=torch.float32),
+            "phase_time": torch.tensor(phase_time, dtype=torch.float32),
+        }
+
+
+class PhaseDatasetDTCC(PhaseDatasetDT):
+
+    def __getitem__(self, i):
+
+        idx = self.idx_batch[i][self.valid_index[self.idx_batch[i]]]
+        idx1_eve = self.pairs["idx_eve1"][idx].values
+        idx2_eve = self.pairs["idx_eve2"][idx].values
+        idx_eve = np.stack([idx1_eve, idx2_eve], axis=1)
+        idx_sta = self.pairs["idx_sta"][idx].values
+        phase_weight = self.pairs["weight"][idx].values
+        phase_type = self.pairs["phase_type"][idx].values
+        phase_time = self.pairs["dt"][idx].values
 
         return {
             "idx_eve": torch.tensor(idx_eve, dtype=torch.long),
