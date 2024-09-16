@@ -202,7 +202,7 @@ class PhaseDatasetDT(Dataset):
         picks,
         events,
         stations,
-        batch_size=1000,
+        batch_size=10000,
         valid_index=None,
         config=None,
         rank=0,
