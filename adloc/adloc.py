@@ -225,6 +225,7 @@ class TravelTimeDD(TravelTime):
 
         self.event_loc.weight.requires_grad = True
         self.event_time.weight.requires_grad = False
+        # self.event_time.weight.requires_grad = True
 
     def calc_time(self, event_loc, station_loc, phase_type):
         if self.eikonal is None:
@@ -313,6 +314,8 @@ class TravelTimeDD(TravelTime):
                 phase_time_ = phase_time[phase_type == type]
                 loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
 
+        if loss == 0.0:
+            return None
         return {"phase_time": pred_time, "loss": loss}
 
 

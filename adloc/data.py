@@ -231,6 +231,10 @@ class PhaseDatasetDT(Dataset):
     def __getitem__(self, i):
 
         idx = self.idx_batch[i][self.valid_index[self.idx_batch[i]]]
+
+        if len(idx) == 0:
+            return None  # skip empty batch
+
         idx1_eve = self.pairs["event_index1"][idx]
         idx2_eve = self.pairs["event_index2"][idx]
         idx_eve = np.stack([idx1_eve, idx2_eve], axis=1)
