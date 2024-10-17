@@ -235,10 +235,10 @@ class PhaseDatasetDT(Dataset):
         if len(idx) == 0:
             return None  # skip empty batch
 
-        idx1_eve = self.pairs["event_index1"][idx]
-        idx2_eve = self.pairs["event_index2"][idx]
+        idx1_eve = self.pairs["idx_eve1"][idx]
+        idx2_eve = self.pairs["idx_eve2"][idx]
         idx_eve = np.stack([idx1_eve, idx2_eve], axis=1)
-        idx_sta = self.pairs["station_index"][idx]
+        idx_sta = self.pairs["idx_sta"][idx]
         phase_weight = self.pairs["phase_score"][idx]
         phase_type = self.pairs["phase_type"][idx]
         phase_time = self.pairs["phase_dtime"][idx]

@@ -187,7 +187,9 @@ class TravelTime(nn.Module):
             if phase_time is not None:
                 phase_time_ = phase_time[phase_type == type]
                 resisudal[phase_type == type] = phase_time_ - t_
-                loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
+                # loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
+                # loss += torch.sum(F.l1_loss(t_, phase_time_, reduction="none") * phase_weight_)
+                loss += torch.sum(torch.abs(t_ - phase_time_) * phase_weight_)
 
         return {"phase_time": pred_time, "residual": resisudal, "loss": loss}
 
@@ -312,7 +314,9 @@ class TravelTimeDD(TravelTime):
 
             if phase_time is not None:
                 phase_time_ = phase_time[phase_type == type]
-                loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
+                # loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
+                # loss += torch.sum(F.l1_loss(t_, phase_time_, reduction="none") * phase_weight_)
+                loss += torch.sum(torch.abs(t_ - phase_time_) * phase_weight_)
 
         if loss == 0.0:
             return None
