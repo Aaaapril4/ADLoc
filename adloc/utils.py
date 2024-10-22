@@ -50,20 +50,35 @@ def invert(picks, stations, config, estimator, event_index, event_init):
     else:
         MAX_RESIDUAL = config["max_residual_time"]
 
-    if "station_term_time" not in stations.columns:
-        stations["station_term_time"] = 0.0
+    if "station_term_time_p" not in stations.columns:
+        stations["station_term_time_p"] = 0.0
+    if "station_term_time_s" not in stations.columns:
+        stations["station_term_time_s"] = 0.0
     if config["use_amplitude"] and ("station_term_amplitude" not in stations.columns):
         stations["station_term_amplitude"] = 0.0
 
     if config["use_amplitude"]:
         X = picks.merge(
-            stations[["x_km", "y_km", "z_km", "station_id", "station_term_time", "station_term_amplitude"]],
-            # stations[["x_km", "y_km", "z_km", "station_id", "station_term_p", "station_term_s"]], ## Separate P and S station term
+            # stations[["x_km", "y_km", "z_km", "station_id", "station_term_time", "station_term_amplitude"]],
+            stations[
+                [
+                    "x_km",
+                    "y_km",
+                    "z_km",
+                    "station_id",
+                    "station_term_time_p",
+                    "station_term_time_s",
+                    "station_term_amplitude",
+                ]
+            ],  ## Separate P and S station term
             on="station_id",
         )
     else:
         X = picks.merge(
-            stations[["x_km", "y_km", "z_km", "station_id", "station_term_time"]],
+            # stations[["x_km", "y_km", "z_km", "station_id", "station_term_time"]],
+            stations[
+                ["x_km", "y_km", "z_km", "station_id", "station_term_time_p", "station_term_time_s"]
+            ],  ## Separate P and S station term
             on="station_id",
         )
     t0 = X["phase_time"].min()
@@ -79,15 +94,13 @@ def invert(picks, stations, config, estimator, event_index, event_init):
 
     X.rename(columns={"phase_type": "type", "phase_score": "score", "phase_time": "t_s"}, inplace=True)
     X["t_s"] = (X["t_s"] - t0).dt.total_seconds()
+    X["station_term_time"] = X.apply(
+        lambda x: x["station_term_time_p"] if x["type"] == 0 else x["station_term_time_s"], axis=1
+    )  ## Separate P and S station term
     X["t_s"] = X["t_s"] - X["station_term_time"]
     if config["use_amplitude"]:
         X.rename(columns={"phase_amplitude": "amp"}, inplace=True)
         X["amp"] = X["amp"] - X["station_term_amplitude"]
-    # X["t_s"] = X.apply(
-    #     lambda x: x["t_s"] - x["station_term_p"] if x["type"] == 0 else x["t_s"] - x["station_term_s"], axis=1
-    # ) ## Separate P and S station term
-    # X = X[["idx_sta", "type", "score", "t_s", "amp"]]
-    # X["type"] = X["type"].apply(lambda x: mapping_phase_type_int[x])
 
     estimator.set_params(**{"events": event_init})
 
