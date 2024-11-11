@@ -1,9 +1,10 @@
 # %%
+import os
+import pickle
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-import os
-import pickle
 
 # %%
 data_path = "stanford"

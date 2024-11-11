@@ -299,7 +299,7 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, s
     im = ax[0, 1].scatter(
         stations["x_km"],
         stations["y_km"],
-        c=stations["station_term_time"],
+        c=stations["station_term_time_p"],
         cmap="viridis_r",
         s=100,
         marker="^",
@@ -312,7 +312,7 @@ def plotting_ransac(stations, figure_path, config, picks, events_init, events, s
     ax[0, 1].set_ylabel("Y (km)")
     cbar = fig.colorbar(im, ax=ax[0, 1])
     cbar.set_label("Residual (s)")
-    ax[0, 1].set_title(f"Station term: {np.mean(np.abs(stations['station_term_time'].values)):.4f} s")
+    ax[0, 1].set_title(f"Station term: {np.mean(np.abs(stations['station_term_time_p'].values)):.4f} s")
 
     im = ax[0, 2].scatter(
         stations["x_km"],

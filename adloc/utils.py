@@ -105,8 +105,11 @@ def invert(picks, stations, config, estimator, event_index, event_init):
     estimator.set_params(**{"events": event_init})
 
     # ## Location using ADLoc
-    # estimator.fit(X[["idx_sta", "type", "score"]].values, y=X["t_s"].values)
-    # inlier_mask = np.ones(len(picks_by_event)).astype(bool)
+    # if config["use_amplitude"]:
+    #     estimator.fit(X[["idx_sta", "type", "score", "amp"]].values, y=X[["t_s", "amp"]].values)
+    # else:
+    #     estimator.fit(X[["idx_sta", "type", "score"]].values, y=X[["t_s"]].values)
+    # inlier_mask = np.ones(len(X)).astype(bool)
 
     ## Location using RANSAC
     num_picks = len(X)

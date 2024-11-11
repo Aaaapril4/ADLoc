@@ -110,6 +110,10 @@ if __name__ == "__main__":
     vp_vs_ratio = 1.73
     vs = [v / vp_vs_ratio for v in vp]
     h = 0.3
+    # zz = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 30.0]
+    # vp = [4.746, 4.793, 4.799, 5.045, 5.721, 5.879, 6.504, 6.708, 6.725, 7.800]
+    # vs = [2.469, 2.470, 2.929, 2.930, 3.402, 3.403, 3.848, 3.907, 3.963, 4.500]
+    # h = 0.3
 
     ##################################### GaMMA Paper DATA #####################################
 
@@ -165,8 +169,12 @@ if __name__ == "__main__":
 
     # %%
     stations["depth_km"] = -stations["elevation_m"] / 1000
-    if "station_term_time" not in stations.columns:
-        stations["station_term_time"] = 0.0
+    # if "station_term_time" not in stations.columns:
+    #     stations["station_term_time"] = 0.0
+    if "station_term_time_p" not in stations.columns:
+        stations["station_term_time_p"] = 0.0
+    if "station_term_time_s" not in stations.columns:
+        stations["station_term_time_s"] = 0.0
     if "station_term_amplitude" not in stations.columns:
         stations["station_term_amplitude"] = 0.0
     stations[["x_km", "y_km"]] = stations.apply(
@@ -211,10 +219,11 @@ if __name__ == "__main__":
     config["min_picks_ratio"] = 0.2
     config["max_residual_time"] = 1.0
     config["max_residual_amplitude"] = 1.0
+    # config["max_residual_time"] = 0.2 ## Stanford
+    # config["max_residual_amplitude"] = 0.2 ## Stanford
     config["min_score"] = 0.6
     config["min_p_picks"] = 1
     config["min_s_picks"] = 1
-
 
     config["bfgs_bounds"] = (
         (config["xlim_km"][0] - 1, config["xlim_km"][1] + 1),  # x
@@ -274,42 +283,41 @@ if __name__ == "__main__":
     for iter in range(MAX_SST_ITER):
         # picks, events = invert_location_iter(picks, stations, config, estimator, events_init=events_init, iter=iter)
         picks, events = invert_location(picks, stations, config, estimator, events_init=events_init, iter=iter)
-        # station_term = picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_time": "mean"}).reset_index()
-        station_term_time = picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_time": "mean"}).reset_index()
         station_term_amp = (
-            picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_amplitude": "mean"}).reset_index()
+            picks[picks["mask"] == 1.0].groupby("idx_sta").agg({"residual_amplitude": "median"}).reset_index()
         )
-        stations["station_term_time"] += (
-            stations["idx_sta"].map(station_term_time.set_index("idx_sta")["residual_time"]).fillna(0)
-        )
-        stations["station_term_amplitude"] += (
-            stations["idx_sta"].map(station_term_amp.set_index("idx_sta")["residual_amplitude"]).fillna(0)
-        )
+        station_term_amp.set_index("idx_sta", inplace=True)
+        stations["station_term_amplitude"] += stations["idx_sta"].map(station_term_amp["residual_amplitude"]).fillna(0)
         ## Separate P and S station term
-        # station_term = (
-        #     picks[picks["mask"] == 1.0].groupby(["idx_sta", "phase_type"]).agg({"residual_time": "mean"}).reset_index()
+        station_term_time = (
+            picks[picks["mask"] == 1.0].groupby(["idx_sta", "phase_type"]).agg({"residual_time": "mean"}).reset_index()
+        )
+        station_term_time.set_index("idx_sta", inplace=True)
+        stations["station_term_time_p"] += (
+            stations["idx_sta"].map(station_term_time[station_term_time["phase_type"] == 0]["residual_time"]).fillna(0)
+        )
+        stations["station_term_time_s"] += (
+            stations["idx_sta"].map(station_term_time[station_term_time["phase_type"] == 1]["residual_time"]).fillna(0)
+        )
+        ## Same P and S station term
+        # station_term_time = (
+        #     picks[picks["mask"] == 1.0].groupby(["idx_sta"]).agg({"residual_time": "mean"}).reset_index()
         # )
-        # stations["station_term_p"] = (
-        #     stations["idx_sta"]
-        #     .map(station_term[station_term["phase_type"] == 0].set_index("idx_sta")["residual_time"])
-        #     .fillna(0)
-        # )
-        # stations["station_term_s"] = (
-        #     stations["idx_sta"]
-        #     .map(station_term[station_term["phase_type"] == 1].set_index("idx_sta")["residual_time"])
-        #     .fillna(0)
-        # )
+        # station_term_time.set_index("idx_sta", inplace=True)
+        # stations["station_term_time_p"] += stations["idx_sta"].map(station_term_time["residual_time"]).fillna(0)
+        # stations["station_term_time_s"] += stations["idx_sta"].map(station_term_time["residual_time"]).fillna(0)
 
         plotting_ransac(stations, figure_path, config, picks, events_init, events, suffix=f"_ransac_sst_{iter}")
 
-        if iter == 0:
-            MIN_SST_S = (
-                np.mean(np.abs(station_term_time["residual_time"])) / 10.0
-            )  # break at 10% of the initial station term
-            print(f"MIN_SST (s): {MIN_SST_S}")
-        if np.mean(np.abs(station_term_time["residual_time"])) < MIN_SST_S:
-            print(f"Mean station term: {np.mean(np.abs(station_term_time['residual_time']))}")
-            # break
+        # if iter == 0:
+        #     MIN_SST_S = (
+        #         np.mean(np.abs(station_term_time["residual_term_time_p"])) / 10.0
+        #     )  # break at 10% of the initial station term
+        #     print(f"MIN_SST (s): {MIN_SST_S}")
+        # if np.mean(np.abs(station_term_time["residual_term_time_p"])) < MIN_SST_S:
+        print(
+            f"Mean station term: TP = {np.mean(np.abs(stations['station_term_time_p'])):.2e}s, TS = {np.mean(np.abs(stations['station_term_time_s'])):.2e}s, AMP = {np.mean(np.abs(stations['station_term_amplitude'])):.2e}"
+        )
         iter += 1
 
     plotting_ransac(stations, figure_path, config, picks, events_init, events, suffix=f"_ransac_sst")
@@ -324,7 +332,15 @@ if __name__ == "__main__":
     events.drop(["idx_eve", "x_km", "y_km", "z_km"], axis=1, inplace=True, errors="ignore")
     events.sort_values(["time"], inplace=True)
 
-    picks.rename({"mask": "adloc_mask", "residual_time": "adloc_residual_time", "residual_amplitude": "adloc_residual_amplitude"}, axis=1, inplace=True)
+    picks.rename(
+        {
+            "mask": "adloc_mask",
+            "residual_time": "adloc_residual_time",
+            "residual_amplitude": "adloc_residual_amplitude",
+        },
+        axis=1,
+        inplace=True,
+    )
     picks["phase_type"] = picks["phase_type"].map({0: "P", 1: "S"})
     picks.drop(["idx_eve", "idx_sta"], axis=1, inplace=True, errors="ignore")
     picks.sort_values(["phase_time"], inplace=True)
