@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 
 from adloc.adloc import TravelTimeDD
-from adloc.data import PhaseDatasetDD
+from adloc.data import PhaseDatasetDT, PhaseDatasetDTCC
 from adloc.eikonal2d import init_eikonal2d
 from adloc.inversion import optimize_dd
 from utils import plotting_dd
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     )
 
     # %%
-    phase_dataset = PhaseDatasetDD(pairs, picks, events, stations, rank=ddp_local_rank, world_size=ddp_world_size)
+    phase_dataset = PhaseDatasetDT(pairs, picks, events, stations, rank=ddp_local_rank, world_size=ddp_world_size)
     data_loader = DataLoader(phase_dataset, batch_size=None, shuffle=False, num_workers=0, drop_last=False)
 
     # %%
@@ -256,7 +256,7 @@ if __name__ == "__main__":
         num_event,
         num_station,
         station_loc=station_loc,
-        event_loc=event_loc,
+        event_loc0=event_loc,
         # event_time=event_time,
         eikonal=config["eikonal"],
     )
@@ -270,6 +270,7 @@ if __name__ == "__main__":
     ## invert loss
     ######################################################################################################
     optimizer = optim.Adam(params=travel_time.parameters(), lr=0.1)
+    # optimizer = optim.AdamW(params=travel_time.parameters(), lr=0.1, weight_decay=1.0)
     valid_index = np.ones(len(pairs), dtype=bool)
     EPOCHS = 100
     for epoch in range(EPOCHS):
@@ -296,11 +297,11 @@ if __name__ == "__main__":
 
         # torch.nn.utils.clip_grad_norm_(travel_time.parameters(), 1.0)
         optimizer.step()
-        with torch.no_grad():
-            raw_travel_time.event_loc.weight.data[:, 2].clamp_(
-                min=config["zlim_km"][0] + 0.1, max=config["zlim_km"][1] - 0.1
-            )
-            raw_travel_time.event_loc.weight.data[torch.isnan(raw_travel_time.event_loc.weight)] = 0.0
+        # with torch.no_grad():
+        #     raw_travel_time.event_loc.weight.data[:, 2].clamp_(
+        #         min=config["zlim_km"][0] + 0.1, max=config["zlim_km"][1] - 0.1
+        #     )
+        #     raw_travel_time.event_loc.weight.data[torch.isnan(raw_travel_time.event_loc.weight)] = 0.0
         if ddp_local_rank == 0:
             print(f"Epoch {epoch}: loss {loss:.6e} of {np.sum(valid_index)} picks, {loss / np.sum(valid_index):.6e}")
 
@@ -318,21 +319,37 @@ if __name__ == "__main__":
             pred_time.append(meta["phase_time"].detach().numpy())
 
         pred_time = np.concatenate(pred_time)
-        valid_index = np.abs(pred_time - pairs["phase_dtime"]) < np.std((pred_time - pairs["phase_dtime"])[valid_index]) * 3.0 #* (np.cos(epoch * np.pi / EPOCHS) + 2.0) # 3std -> 1std
-        
-        pairs_df = pd.DataFrame({"event_index1": pairs["event_index1"], "event_index2": pairs["event_index2"], "station_index": pairs["station_index"]})
+        valid_index = (
+            np.abs(pred_time - pairs["phase_dtime"]) < np.std((pred_time - pairs["phase_dtime"])[valid_index]) * 3.0
+        )  # * (np.cos(epoch * np.pi / EPOCHS) + 2.0) # 3std -> 1std
+
+        pairs_df = pd.DataFrame(
+            {
+                "event_index1": pairs["event_index1"],
+                "event_index2": pairs["event_index2"],
+                "station_index": pairs["station_index"],
+            }
+        )
         pairs_df = pairs_df[valid_index]
         config["MIN_OBS"] = 8
-        pairs_df = pairs_df.groupby(["event_index1", "event_index2"], as_index=False, group_keys=False).filter(lambda x: len(x) >= config["MIN_OBS"])
+        pairs_df = pairs_df.groupby(["event_index1", "event_index2"], as_index=False, group_keys=False).filter(
+            lambda x: len(x) >= config["MIN_OBS"]
+        )
         valid_index = np.zeros(len(pairs), dtype=bool)
         valid_index[pairs_df.index] = True
 
         phase_dataset.valid_index = valid_index
-        
+
         invert_event_loc = raw_travel_time.event_loc.weight.clone().detach().numpy()
         invert_event_time = raw_travel_time.event_time.weight.clone().detach().numpy()
-        valid_event_index = np.unique(pairs["event_index1"][valid_index]) 
-        valid_event_index = np.concatenate([np.unique(pairs["event_index1"][valid_index]), np.unique(pairs["event_index2"][valid_index])]) 
+        invert_event_loc0 = raw_travel_time.event_loc0.weight.clone().detach().numpy()
+        invert_event_time0 = raw_travel_time.event_time0.weight.clone().detach().numpy()
+        invert_event_loc = invert_event_loc0 + invert_event_loc
+        invert_event_time = invert_event_time0 + invert_event_time
+        valid_event_index = np.unique(pairs["event_index1"][valid_index])
+        valid_event_index = np.concatenate(
+            [np.unique(pairs["event_index1"][valid_index]), np.unique(pairs["event_index2"][valid_index])]
+        )
         valid_event_index = np.sort(np.unique(valid_event_index))
 
         if ddp_local_rank == 0 and (epoch % 10 == 0):
@@ -397,6 +414,10 @@ if __name__ == "__main__":
 
         invert_event_loc = raw_travel_time.event_loc.weight.clone().detach().numpy()
         invert_event_time = raw_travel_time.event_time.weight.clone().detach().numpy()
+        invert_event_loc0 = raw_travel_time.event_loc0.weight.clone().detach().numpy()
+        invert_event_time0 = raw_travel_time.event_time0.weight.clone().detach().numpy()
+        invert_event_loc = invert_event_loc0 + invert_event_loc
+        invert_event_time = invert_event_time0 + invert_event_time
 
         events = events_init.copy()
         events["time"] = events["time"] + pd.to_timedelta(np.squeeze(invert_event_time), unit="s")

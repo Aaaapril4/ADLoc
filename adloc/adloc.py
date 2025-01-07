@@ -3,6 +3,49 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Function
+
+from .eikonal2d import _interp
+
+
+class CalcTravelTime(Function):
+    @staticmethod
+    def forward(r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid0, zgrid0, nr, nz, h):
+        tt = _interp(timetable, r.numpy(), z.numpy(), rgrid0, zgrid0, nr, nz, h)
+        tt = torch.from_numpy(tt)
+        return tt
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid0, zgrid0, nr, nz, h = inputs
+        ctx.save_for_backward(r, z)
+        ctx.timetable = timetable
+        ctx.timetable_grad_r = timetable_grad_r
+        ctx.timetable_grad_z = timetable_grad_z
+        ctx.rgrid0 = rgrid0
+        ctx.zgrid0 = zgrid0
+        ctx.nr = nr
+        ctx.nz = nz
+        ctx.h = h
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        timetable_grad_r = ctx.timetable_grad_r
+        timetable_grad_z = ctx.timetable_grad_z
+        rgrid0 = ctx.rgrid0
+        zgrid0 = ctx.zgrid0
+        nr = ctx.nr
+        nz = ctx.nz
+        h = ctx.h
+        r, z = ctx.saved_tensors
+
+        grad_r = _interp(timetable_grad_r, r.numpy(), z.numpy(), rgrid0, zgrid0, nr, nz, h)
+        grad_z = _interp(timetable_grad_z, r.numpy(), z.numpy(), rgrid0, zgrid0, nr, nz, h)
+
+        grad_r = torch.from_numpy(grad_r) * grad_output
+        grad_z = torch.from_numpy(grad_z) * grad_output
+
+        return grad_r, grad_z, None, None, None, None, None, None, None, None
 
 
 # %%
@@ -64,6 +107,8 @@ class TravelTime(nn.Module):
         station_dt=None,
         event_loc=None,
         event_time=None,
+        event_loc0=None,
+        event_time0=None,
         velocity={"P": 6.0, "S": 6.0 / 1.73},
         eikonal=None,
         zlim=[0, 30],
@@ -72,10 +117,24 @@ class TravelTime(nn.Module):
     ):
         super().__init__()
         self.num_event = num_event
+        self.event_loc0 = nn.Embedding(num_event, 3)
+        self.event_time0 = nn.Embedding(num_event, 1)
         self.event_loc = nn.Embedding(num_event, 3)
         self.event_time = nn.Embedding(num_event, 1)
         self.station_loc = nn.Embedding(num_station, 3)
         self.station_dt = nn.Embedding(num_station, 1)  # same statioin term for P and S
+
+        ## initialize event_loc0 and event_time0
+        if event_loc0 is not None:
+            event_loc0 = torch.tensor(event_loc0, dtype=dtype).contiguous()
+        else:
+            event_loc0 = torch.zeros(num_event, 3, dtype=dtype).contiguous()
+        if event_time0 is not None:
+            event_time0 = torch.tensor(event_time0, dtype=dtype).contiguous()
+        else:
+            event_time0 = torch.zeros(num_event, 1, dtype=dtype).contiguous()
+        self.event_loc0.weight = torch.nn.Parameter(event_loc0, requires_grad=False)
+        self.event_time0.weight = torch.nn.Parameter(event_time0, requires_grad=False)
 
         ## check initialization
         station_loc = torch.tensor(station_loc, dtype=dtype)
@@ -97,7 +156,8 @@ class TravelTime(nn.Module):
         self.event_loc.weight = torch.nn.Parameter(event_loc, requires_grad=True)
         self.event_time.weight = torch.nn.Parameter(event_time, requires_grad=True)
 
-        self.velocity = [velocity["P"], velocity["S"]]
+        # self.velocity = [velocity["P"], velocity["S"]]
+        self.velocity = velocity
         self.eikonal = eikonal
         self.zlim = zlim
         self.grad_type = grad_type
@@ -125,25 +185,25 @@ class TravelTime(nn.Module):
             z = event_loc[:, 2] - station_loc[:, 2]
             r = torch.sqrt(x**2 + y**2)
 
-            # timetable = self.eikonal["up"] if phase_type == 0 else self.eikonal["us"]
-            # timetable_grad = self.eikonal["grad_up"] if phase_type == 0 else self.eikonal["grad_us"]
-            # timetable_grad_r = timetable_grad[0]
-            # timetable_grad_z = timetable_grad[1]
-            # rgrid0 = self.eikonal["rgrid"][0]
-            # zgrid0 = self.eikonal["zgrid"][0]
-            # nr = self.eikonal["nr"]
-            # nz = self.eikonal["nz"]
-            # h = self.eikonal["h"]
-            # tt = CalcTravelTime.apply(r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid0, zgrid0, nr, nz, h)
+            timetable = self.eikonal["up"] if phase_type == 0 else self.eikonal["us"]
+            timetable_grad = self.eikonal["grad_up"] if phase_type == 0 else self.eikonal["grad_us"]
+            timetable_grad_r = timetable_grad[0]
+            timetable_grad_z = timetable_grad[1]
+            rgrid0 = self.eikonal["rgrid"][0]
+            zgrid0 = self.eikonal["zgrid"][0]
+            nr = self.eikonal["nr"]
+            nz = self.eikonal["nz"]
+            h = self.eikonal["h"]
+            tt = CalcTravelTime.apply(r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid0, zgrid0, nr, nz, h)
 
-            if phase_type in [0, "P"]:
-                timetable = self.timetable_p
-            elif phase_type in [1, "S"]:
-                timetable = self.timetable_s
-            else:
-                raise ValueError("phase_type should be 0 or 1. for P and S, respectively.")
+            # if phase_type in [0, "P"]:
+            #     timetable = self.timetable_p
+            # elif phase_type in [1, "S"]:
+            #     timetable = self.timetable_s
+            # else:
+            #     raise ValueError("phase_type should be 0 or 1. for P and S, respectively.")
 
-            tt = interp2d(timetable, r, z, self.rgrid, self.zgrid, self.h)
+            # tt = interp2d(timetable, r, z, self.rgrid, self.zgrid, self.h)
 
             tt = tt.float().unsqueeze(-1)
 
@@ -205,6 +265,8 @@ class TravelTimeDD(TravelTime):
         station_dt=None,
         event_loc=None,
         event_time=None,
+        event_loc0=None,
+        event_time0=None,
         velocity={"P": 6.0, "S": 6.0 / 1.73},
         eikonal=None,
         zlim=[0, 30],
@@ -218,6 +280,8 @@ class TravelTimeDD(TravelTime):
             station_dt=station_dt,
             event_loc=event_loc,
             event_time=event_time,
+            event_loc0=event_loc0,
+            event_time0=event_time0,
             velocity=velocity,
             eikonal=eikonal,
             zlim=zlim,
@@ -297,11 +361,17 @@ class TravelTimeDD(TravelTime):
             station_loc_ = self.station_loc(station_index_)  # (nb, 3)
             station_dt_ = self.station_dt(station_index_)  # (nb, 1)
 
-            event_loc_ = self.event_loc(event_index_)  # (nb, 2, 3)
-            event_time_ = self.event_time(event_index_)  # (nb, 2, 1)
+            delta_event_loc_ = self.event_loc(event_index_)  # (nb, 2, 3)
+            delta_event_time_ = self.event_time(event_index_)  # (nb, 2, 1)
+
+            event_loc0_ = self.event_loc0(event_index_)  # (nb, 2, 3)
+            event_time0_ = self.event_time0(event_index_)  # (nb, 2, 1)
 
             station_loc_ = station_loc_.unsqueeze(1)  # (nb, 1, 3)
             station_dt_ = station_dt_.unsqueeze(1)  # (nb, 1, 1)
+
+            event_loc_ = event_loc0_ + delta_event_loc_
+            event_time_ = event_time0_ + delta_event_time_
 
             tt_ = self.calc_time(event_loc_, station_loc_, type)  # (nb, 2)
 
@@ -529,8 +599,8 @@ if __name__ == "__main__":
         num_station,
         stations[["x_km", "y_km", "z_km"]].values,
         stations[["dt_s"]].values,
-        event_loc,
-        event_time,
+        event_loc0=event_loc,
+        event_time0=event_time,
         eikonal=eikonal_config,
     )
 
