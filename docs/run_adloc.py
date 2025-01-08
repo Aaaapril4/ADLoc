@@ -138,6 +138,7 @@ if __name__ == "__main__":
     # vp = [4.746, 4.793, 4.799, 5.045, 5.721, 5.879, 6.504, 6.708, 6.725, 7.800]
     # vs = [2.469, 2.470, 2.929, 2.930, 3.402, 3.403, 3.848, 3.907, 3.963, 4.500]
     # h = 0.3
+
     vel = {"Z": zz, "P": vp, "S": vs}
     config["eikonal"] = {
         "vel": vel,
@@ -200,7 +201,7 @@ if __name__ == "__main__":
         num_station,
         station_loc,
         event_loc=events[["x_km", "y_km", "z_km"]].values,
-        velocity={"P": vp, "S": vs},
+        velocity={"P": 6.0, "S": 6.0 / 1.73},
         eikonal=config["eikonal"],
     )
 
@@ -431,8 +432,11 @@ if __name__ == "__main__":
         tt = np.reshape(tt, (num_grid, num_picks))
         dt = tt - picks_per_event["travel_time"].values
         dt_mean = np.sum(dt * phase_weight, axis=-1, keepdims=True) / np.sum(phase_weight)
-        dt_std = np.sqrt(np.sum((dt - dt_mean) ** 2 * phase_weight, axis=-1) / np.sum(phase_weight))
-        idx = np.argmin(dt_std)
+        dt_std = np.sqrt(
+            np.sum((dt - dt_mean) ** 2 * phase_weight, axis=-1) / np.sum(phase_weight)
+        )  ## L2 loss/Huber loss
+        dt_abs = np.sum(np.abs(dt - dt_mean) * phase_weight, axis=-1) / np.sum(phase_weight)  ## L1 loss/Huber loss
+        idx = np.argmin(dt_abs)
         event_loc_gs.append(search_grid[idx] + event_loc0)
         event_time_gs.append(np.mean(dt, axis=-1)[idx] + event_time0)
 
@@ -445,6 +449,8 @@ if __name__ == "__main__":
         variance = np.sum((search_grid - mean) ** 2 * prob, axis=0)
         uncertainty = np.sqrt(variance)
         event_uncertainty.append(uncertainty)
+
+        # import matplotlib.pyplot as plt
 
         # tt = np.reshape(tt, (nx, ny, nz, num_picks))
         # dt = np.reshape(dt, (nx, ny, nz, num_picks))
@@ -470,6 +476,7 @@ if __name__ == "__main__":
         # ax[2].invert_yaxis()
         # plt.savefig("debug.png", bbox_inches="tight", dpi=300)
         # plt.close(fig)
+        # raise
 
     events = events_init.copy()
     events["time"] = events["time"] + pd.to_timedelta(np.squeeze(event_time_gs), unit="s")

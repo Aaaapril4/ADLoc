@@ -185,8 +185,8 @@ class TravelTime(nn.Module):
             z = event_loc[:, 2] - station_loc[:, 2]
             r = torch.sqrt(x**2 + y**2)
 
-            timetable = self.eikonal["up"] if phase_type == 0 else self.eikonal["us"]
-            timetable_grad = self.eikonal["grad_up"] if phase_type == 0 else self.eikonal["grad_us"]
+            timetable = self.eikonal["up"] if phase_type in [0, "P"] else self.eikonal["us"]
+            timetable_grad = self.eikonal["grad_up"] if phase_type in [0, "P"] else self.eikonal["grad_us"]
             timetable_grad_r = timetable_grad[0]
             timetable_grad_z = timetable_grad[1]
             rgrid0 = self.eikonal["rgrid"][0]
@@ -294,6 +294,7 @@ class TravelTimeDD(TravelTime):
         # self.event_time.weight.requires_grad = True
 
     def calc_time(self, event_loc, station_loc, phase_type):
+
         if self.eikonal is None:
             dist = torch.linalg.norm(event_loc - station_loc, axis=-1, keepdim=True)
             tt = dist / self.velocity[phase_type]
@@ -313,25 +314,25 @@ class TravelTimeDD(TravelTime):
             z = event_loc[:, 2] - station_loc[:, 2]
             r = torch.sqrt(x**2 + y**2)
 
-            # timetable = self.eikonal["up"] if phase_type == 0 else self.eikonal["us"]
-            # timetable_grad = self.eikonal["grad_up"] if phase_type == 0 else self.eikonal["grad_us"]
-            # timetable_grad_r = timetable_grad[0]
-            # timetable_grad_z = timetable_grad[1]
-            # rgrid0 = self.eikonal["rgrid"][0]
-            # zgrid0 = self.eikonal["zgrid"][0]
-            # nr = self.eikonal["nr"]
-            # nz = self.eikonal["nz"]
-            # h = self.eikonal["h"]
-            # tt = CalcTravelTime.apply(r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid0, zgrid0, nr, nz, h)
+            timetable = self.eikonal["up"] if phase_type in [0, "P"] else self.eikonal["us"]
+            timetable_grad = self.eikonal["grad_up"] if phase_type in [0, "P"] else self.eikonal["grad_us"]
+            timetable_grad_r = timetable_grad[0]
+            timetable_grad_z = timetable_grad[1]
+            rgrid0 = self.eikonal["rgrid"][0]
+            zgrid0 = self.eikonal["zgrid"][0]
+            nr = self.eikonal["nr"]
+            nz = self.eikonal["nz"]
+            h = self.eikonal["h"]
+            tt = CalcTravelTime.apply(r, z, timetable, timetable_grad_r, timetable_grad_z, rgrid0, zgrid0, nr, nz, h)
 
-            if phase_type in [0, "P"]:
-                timetable = self.timetable_p
-            elif phase_type in [1, "S"]:
-                timetable = self.timetable_s
-            else:
-                raise ValueError("phase_type should be 0 or 1. for P and S, respectively.")
+            # if phase_type in [0, "P"]:
+            #     timetable = self.timetable_p
+            # elif phase_type in [1, "S"]:
+            #     timetable = self.timetable_s
+            # else:
+            #     raise ValueError("phase_type should be 0 or 1. for P and S, respectively.")
 
-            tt = interp2d(timetable, r, z, self.rgrid, self.zgrid, self.h)
+            # tt = interp2d(timetable, r, z, self.rgrid, self.zgrid, self.h)
 
             tt = tt.float().view(nb1, ne1, 1)
 
