@@ -48,7 +48,7 @@ class ADLoc(BaseEstimator):
             self.use_amplitude = False
 
     @staticmethod
-    def l2_loss_grad(event, X, y, vel={0: 6.0, 1: 6.0 / 1.75}, stations=None, eikonal=None):
+    def l2_loss_grad(event, X, y, vel={0: 6.0, 1: 6.0 / 1.75}, stations=None, eikonal=None, reduce_loss=False):
         """
         X: data_frame with columns ["timestamp", "x_km", "y_km", "z_km", "type"]
         """
@@ -61,7 +61,11 @@ class ADLoc(BaseEstimator):
             tt = np.linalg.norm(event[:3] - stations[station_index, :3], axis=-1) / v + event[3]
         else:
             tt = traveltime(0, station_index, phase_type, event[np.newaxis, :3], stations, eikonal) + event[3]
-        loss = 0.5 * np.sum((tt - y) ** 2 * phase_weight)
+
+        if reduce_loss:
+            loss = 0.5 * np.sum((tt - y) ** 2 * phase_weight)
+        else:
+            loss = (tt - y) * phase_weight  ## For LSQR
 
         J = np.ones((len(X), 4))
         if eikonal is None:
@@ -74,7 +78,11 @@ class ADLoc(BaseEstimator):
             grad = grad_traveltime(0, station_index, phase_type, event[np.newaxis, :3], stations, eikonal)
             J[:, :3] = grad
 
-        J = np.sum((tt - y)[:, np.newaxis] * J * phase_weight[:, np.newaxis], axis=0)
+        if reduce_loss:
+            J = np.sum((tt - y)[:, np.newaxis] * J * phase_weight[:, np.newaxis], axis=0)
+        else:
+            J = J * phase_weight[:, np.newaxis]  ## For LSQR
+
         return loss, J
 
     @staticmethod
@@ -150,6 +158,35 @@ class ADLoc(BaseEstimator):
             )
 
         return self
+
+    # def fit(self, X, y=None, event_index=0, damp=1.0, atol=1e-3, max_iter=100): ## For LSQR
+
+    #     if self.use_amplitude:
+    #         yt = y[:, 0]  # time
+    #         ya = y[:, 1]  # amplitude
+    #     else:
+    #         yt = y[:, 0]
+
+    #     event0 = self.events[event_index]
+    #     delta = np.inf
+    #     for i in range(max_iter):
+    #         loss, grad = self.l2_loss_grad(event0, X, yt, self.vel, self.stations, self.eikonal)
+    #         A, b = grad, loss
+    #         dx = scipy.sparse.linalg.lsqr(A, b, damp=damp)[0]
+    #         self.events[event_index] -= dx
+    #         delta = np.linalg.norm(dx)
+    #         if delta < atol:
+    #             self.is_fitted_ = True
+    #             break
+
+    #     if self.use_amplitude:
+    #         station_index = X[:, 0].astype(int)
+    #         phase_weight = X[:, 2:3]
+    #         self.magnitudes[event_index] = calc_mag(
+    #             ya[:, np.newaxis], self.events[event_index, :3], self.stations[station_index, :3], phase_weight
+    #         )
+
+    #     return self
 
     def predict(self, X, event_index=0):
         """
@@ -523,7 +560,11 @@ if __name__ == "__main__":
     X["type"] = X["type"].apply(lambda x: mapping_int[x.upper()])
 
     estimator = ADLoc(
-        config, stations=stations[["x_km", "y_km", "z_km"]].values, num_event=num_event, eikonal=eikonal_config
+        config,
+        # events=events[["x_km", "y_km", "z_km", "event_time"]].values + np.random.rand(num_event, 4) * 10,
+        stations=stations[["x_km", "y_km", "z_km"]].values,
+        num_event=num_event,
+        eikonal=eikonal_config,
     )
     output = estimator.predict(X[["idx_sta", "type"]].values, event_index=event_index)
     tt_init = output[:, 0]
