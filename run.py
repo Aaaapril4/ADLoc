@@ -103,7 +103,7 @@ def main(args):
     if "degree2km" not in config:
         config["degree2km"] = 111.19
 
-    proj = Proj(f"+proj=sterea +lon_0={config['longitude0']} +lat_0={config['latitude0']} +units=km")
+    proj = Proj(f"+proj=aeqd +lon_0={config['longitude0']} +lat_0={config['latitude0']} +units=km")
 
     # %%
     config["xlim_km"] = proj(

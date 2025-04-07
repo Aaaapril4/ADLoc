@@ -55,6 +55,7 @@ def pairing_picks(event_pairs, picks, config):
 
     return merged[["idx_eve1", "idx_eve2", "idx_sta", "phase_type", "phase_score", "phase_dtime"]]
 
+
 # %%
 if __name__ == "__main__":
 
@@ -110,7 +111,7 @@ if __name__ == "__main__":
     # %%
     lon0 = stations["longitude"].median()
     lat0 = stations["latitude"].median()
-    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
+    proj = Proj(f"+proj=aeqd +lon_0={lon0} +lat_0={lat0}  +units=km")
 
     stations[["x_km", "y_km"]] = stations.apply(
         lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
@@ -189,7 +190,6 @@ if __name__ == "__main__":
     event_pairs = event_pairs.drop_duplicates()
 
     print(f"Number of pick pairs: {len(event_pairs)}")
-
 
     dtypes = np.dtype(
         [

@@ -10,17 +10,16 @@ import pandas as pd
 import torch
 import torch.distributed as dist
 import torch.optim as optim
+from adloc.adloc import TravelTimeDD
+from adloc.data import PhaseDatasetDT, PhaseDatasetDTCC
+from adloc.eikonal2d import init_eikonal2d
+from adloc.inversion import optimize_dd
 from matplotlib import pyplot as plt
 from pyproj import Proj
 from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-
-from adloc.adloc import TravelTimeDD
-from adloc.data import PhaseDatasetDT, PhaseDatasetDTCC
-from adloc.eikonal2d import init_eikonal2d
-from adloc.inversion import optimize_dd
 from utils import plotting_dd
 
 torch.manual_seed(0)
@@ -191,7 +190,7 @@ if __name__ == "__main__":
     # lat0 = stations["latitude"].median()
     lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
     lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
-    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0} +units=km")
+    proj = Proj(f"+proj=aeqd +lon_0={lon0} +lat_0={lat0} +units=km")
 
     stations["x_km"], stations["y_km"] = proj(stations["longitude"], stations["latitude"])
     stations["z_km"] = stations["depth_km"]

@@ -6,10 +6,9 @@ from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from adloc.eikonal2d import calc_traveltime, init_eikonal2d
 from pyproj import Proj
 from tqdm import tqdm
-
-from adloc.eikonal2d import calc_traveltime, init_eikonal2d
 
 np.random.seed(111)
 
@@ -35,7 +34,7 @@ config = {
 time0 = datetime.fromisoformat("2019-01-01T00:00:00")
 lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
 lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
-proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0} +lat_ts={lat0} +units=km")
+proj = Proj(f"+proj=aeqd +lon_0={lon0} +lat_0={lat0} +lat_ts={lat0} +units=km")
 
 min_x_km, min_y_km = proj(longitude=config["minlongitude"], latitude=config["minlatitude"])
 max_x_km, max_y_km = proj(longitude=config["maxlongitude"], latitude=config["maxlatitude"])

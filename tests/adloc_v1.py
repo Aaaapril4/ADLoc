@@ -6,10 +6,10 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
+import torch.optim as optim
 from matplotlib import pyplot as plt
 from pyproj import Proj
 from torch import nn
-import torch.optim as optim
 from tqdm.auto import tqdm
 
 # %%
@@ -41,7 +41,7 @@ events = events[events["event_index"] < 100]
 picks = picks[picks["event_index"] < 100]
 
 # %%
-proj = Proj(f"+proj=sterea +lon_0={config['center'][0]} +lat_0={config['center'][1]} +units=km")
+proj = Proj(f"+proj=aeqd +lon_0={config['center'][0]} +lat_0={config['center'][1]} +units=km")
 stations[["x_km", "y_km"]] = stations.apply(
     lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
 )
@@ -105,6 +105,7 @@ phase_weight = torch.tensor(phase_score, dtype=torch.float32)
 phase_time = torch.tensor(phase_time[:, np.newaxis], dtype=torch.float32)
 phase_type = torch.tensor(phase_type, dtype=torch.long)
 
+
 # %%
 class TravelTime(nn.Module):
     def __init__(
@@ -124,12 +125,14 @@ class TravelTime(nn.Module):
         self.event_loc = nn.Embedding(num_event, 3)
         self.event_time = nn.Embedding(num_event, 1)
         self.station_loc = nn.Embedding(num_station, 3)
-        self.station_dt = nn.Embedding(num_station, 2) # vp, vs
+        self.station_dt = nn.Embedding(num_station, 2)  # vp, vs
         self.station_loc.weight = torch.nn.Parameter(torch.tensor(station_loc, dtype=dtype), requires_grad=False)
         if station_dt is not None:
-            self.station_dt.weight = torch.nn.Parameter(torch.tensor(station_dt, dtype=dtype))#, requires_grad=False)
+            self.station_dt.weight = torch.nn.Parameter(torch.tensor(station_dt, dtype=dtype))  # , requires_grad=False)
         else:
-            self.station_dt.weight = torch.nn.Parameter(torch.zeros(num_station, 2, dtype=dtype))#, requires_grad=False)
+            self.station_dt.weight = torch.nn.Parameter(
+                torch.zeros(num_station, 2, dtype=dtype)
+            )  # , requires_grad=False)
         # self.register_buffer("station_loc", torch.tensor(station_loc, dtype=dtype))
         self.velocity = [velocity["P"], velocity["S"]]
         self.reg = reg
@@ -149,13 +152,19 @@ class TravelTime(nn.Module):
         return tt
 
     def forward(
-        self, station_index, event_index=None, phase_type=None, phase_time=None, phase_weight=None, double_difference=False
+        self,
+        station_index,
+        event_index=None,
+        phase_type=None,
+        phase_time=None,
+        phase_weight=None,
+        double_difference=False,
     ):
         loss = 0.0
         pred_time = torch.zeros(len(phase_type), 1, dtype=torch.float32)
         for type in [0, 1]:
             station_index_ = station_index[phase_type == type]
-            event_index_ = event_index[phase_type == type]                
+            event_index_ = event_index[phase_type == type]
             phase_weight_ = phase_weight[phase_type == type]
 
             station_loc_ = self.station_loc(station_index_)
@@ -174,8 +183,12 @@ class TravelTime(nn.Module):
             if phase_time is not None:
                 phase_time_ = phase_time[phase_type == type]
                 # loss = torch.mean(phase_weight * (t - phase_time) ** 2)
-                loss += torch.mean(F.huber_loss(tt_ + station_dt_, phase_time_ - event_time_, reduction="none") * phase_weight_)
-                loss += self.reg * torch.mean(torch.abs(station_dt_)) ## prevent the trade-off between station_dt and event_time
+                loss += torch.mean(
+                    F.huber_loss(tt_ + station_dt_, phase_time_ - event_time_, reduction="none") * phase_weight_
+                )
+                loss += self.reg * torch.mean(
+                    torch.abs(station_dt_)
+                )  ## prevent the trade-off between station_dt and event_time
 
         return {"phase_time": pred_time, "loss": loss}
 
@@ -237,8 +250,8 @@ invert_station_dt = travel_time.station_dt.weight.clone().detach().numpy()
 plt.figure()
 # plt.scatter(station_loc[:,0], station_loc[:,1], c=tp[idx_event,:])
 plt.plot(event_loc[:, 0], event_loc[:, 1], "x", markersize=1, color="blue", label="True locations")
-plt.scatter(station_loc[:, 0], station_loc[:, 1], c=station_dt[:,0], marker="o", linewidths=0, alpha=0.6)
-plt.scatter(station_loc[:, 0], station_loc[:, 1]+2, c=station_dt[:,1], marker="o", linewidths=0, alpha=0.6)
+plt.scatter(station_loc[:, 0], station_loc[:, 1], c=station_dt[:, 0], marker="o", linewidths=0, alpha=0.6)
+plt.scatter(station_loc[:, 0], station_loc[:, 1] + 2, c=station_dt[:, 1], marker="o", linewidths=0, alpha=0.6)
 plt.axis("scaled")
 plt.colorbar()
 xlim = plt.xlim()

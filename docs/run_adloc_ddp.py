@@ -9,6 +9,9 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 import torch.optim as optim
+from adloc.adloc import TravelTime
+from adloc.data import PhaseDataset
+from adloc.eikonal2d import init_eikonal2d, traveltime
 from matplotlib import pyplot as plt
 from pyproj import Proj
 from sklearn.neighbors import NearestNeighbors
@@ -17,10 +20,6 @@ from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-
-from adloc.adloc import TravelTime
-from adloc.data import PhaseDataset
-from adloc.eikonal2d import init_eikonal2d, traveltime
 from utils import plotting
 
 torch.manual_seed(0)
@@ -80,10 +79,10 @@ if __name__ == "__main__":
     ## Automatic region; you can also specify a region
     # lon0 = stations["longitude"].median()
     # lat0 = stations["latitude"].median()
-    # proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
+    # proj = Proj(f"+proj=aeqd +lon_0={lon0} +lat_0={lat0}  +units=km")
     lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
     lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
-    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0} +lat_ts={lat0} +units=km")
+    proj = Proj(f"+proj=aeqd +lon_0={lon0} +lat_0={lat0} +lat_ts={lat0} +units=km")
 
     if "depth_km" not in stations:
         stations["depth_km"] = -stations["elevation_m"] / 1000
@@ -294,9 +293,7 @@ if __name__ == "__main__":
                 .apply(lambda x: weighted_mean(x["residual"], x["phase_score"]))
                 .reset_index(name="residual")
             )
-            stations["station_term"] += (
-                stations["idx_sta"].map(station_term.set_index("idx_sta")["residual"]).fillna(0)
-            )
+            stations["station_term"] += stations["idx_sta"].map(station_term.set_index("idx_sta")["residual"]).fillna(0)
             raw_travel_time.station_dt.weight.data = torch.tensor(
                 stations["station_term"].values, dtype=torch.float32
             ).view(-1, 1)

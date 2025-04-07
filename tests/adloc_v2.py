@@ -6,13 +6,13 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
+import torch.optim as optim
+import utils
 from matplotlib import pyplot as plt
 from pyproj import Proj
 from torch import nn
-import torch.optim as optim
+from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
-import utils
-from torch.utils.data import Dataset, DataLoader
 
 
 def get_args_parser(add_help=True):
@@ -119,12 +119,20 @@ class PhaseDataset:
         phase_type = []
 
         for i in range(len(self.events)):
-            phase_time.append(self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["phase_time"].values)
-            phase_score.append(self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["phase_score"].values)
-            phase_type.extend(self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["phase_type"].values.tolist())
+            phase_time.append(
+                self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["phase_time"].values
+            )
+            phase_score.append(
+                self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["phase_score"].values
+            )
+            phase_type.extend(
+                self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["phase_type"].values.tolist()
+            )
             event_index.extend([i] * len(self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]))
             station_index.append(
-                self.stations.loc[self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["station_id"], "index"].values
+                self.stations.loc[
+                    self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["station_id"], "index"
+                ].values
             )
 
         phase_time = np.concatenate(phase_time)
@@ -140,7 +148,7 @@ class PhaseDataset:
         self.phase_type = torch.tensor([{"P": 0, "S": 1}[x.upper()] for x in phase_type], dtype=torch.long)
 
     def __getitem__(self, i):
-        
+
         # phase_time = self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["phase_time"].values
         # phase_score = self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["phase_score"].values
         # phase_type = self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]][
@@ -150,7 +158,6 @@ class PhaseDataset:
         # station_index = self.stations.loc[
         #     self.picks[self.picks["event_index"] == self.events.loc[i, "event_index"]]["station_id"], "index"
         # ].values
-
 
         return {
             "event_index": self.event_index,
@@ -183,9 +190,7 @@ class TravelTime(nn.Module):
         self.station_dt = nn.Embedding(num_station, 2)  # vp, vs
         self.station_loc.weight = torch.nn.Parameter(torch.tensor(station_loc, dtype=dtype), requires_grad=False)
         if station_dt is not None:
-            self.station_dt.weight = torch.nn.Parameter(
-                torch.tensor(station_dt, dtype=dtype)
-            )  # , requires_grad=False)
+            self.station_dt.weight = torch.nn.Parameter(torch.tensor(station_dt, dtype=dtype))  # , requires_grad=False)
         else:
             self.station_dt.weight = torch.nn.Parameter(
                 torch.zeros(num_station, 2, dtype=dtype)
@@ -274,7 +279,7 @@ def main(args):
     picks = picks[picks["event_index"] < 100]
 
     # %%
-    proj = Proj(f"+proj=sterea +lon_0={config['center'][0]} +lat_0={config['center'][1]} +units=km")
+    proj = Proj(f"+proj=aeqd +lon_0={config['center'][0]} +lat_0={config['center'][1]} +units=km")
     stations[["x_km", "y_km"]] = stations.apply(
         lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
     )
@@ -321,9 +326,7 @@ def main(args):
     else:
         sampler = torch.utils.data.SequentialSampler(phase_dataset)
 
-    data_loader = DataLoader(
-        phase_dataset, batch_size=None, sampler=sampler, num_workers=args.workers, collate_fn=None
-    )
+    data_loader = DataLoader(phase_dataset, batch_size=None, sampler=sampler, num_workers=args.workers, collate_fn=None)
 
     #####################################
     # %%
@@ -386,7 +389,7 @@ def main(args):
 
             loss = travel_time(station_index, event_index, phase_type, phase_time, phase_weight)["loss"]
             loss.backward()
-    
+
         if i % 100 == 0:
             print(f"Loss: {loss.item()}")
 
@@ -406,8 +409,8 @@ def main(args):
     plt.figure()
     # plt.scatter(station_loc[:,0], station_loc[:,1], c=tp[idx_event,:])
     plt.plot(event_loc[:, 0], event_loc[:, 1], "x", markersize=1, color="blue", label="True locations")
-    plt.scatter(station_loc[:, 0], station_loc[:, 1], c=station_dt[:,0], marker="o", linewidths=0, alpha=0.6)
-    plt.scatter(station_loc[:, 0], station_loc[:, 1]+2, c=station_dt[:,1], marker="o", linewidths=0, alpha=0.6)
+    plt.scatter(station_loc[:, 0], station_loc[:, 1], c=station_dt[:, 0], marker="o", linewidths=0, alpha=0.6)
+    plt.scatter(station_loc[:, 0], station_loc[:, 1] + 2, c=station_dt[:, 1], marker="o", linewidths=0, alpha=0.6)
     plt.axis("scaled")
     plt.colorbar()
     xlim = plt.xlim()
@@ -418,6 +421,7 @@ def main(args):
     # plt.ylim(ylim)
     plt.legend()
     plt.savefig(figure_path / "invert_location_v2.png", dpi=300, bbox_inches="tight")
+
 
 if __name__ == "__main__":
     args = get_args_parser().parse_args()

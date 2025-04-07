@@ -12,11 +12,10 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from pyproj import Proj
-
 from adloc.eikonal2d import init_eikonal2d
 from adloc.sacloc2d import ADLoc
 from adloc.utils import invert_location, invert_location_iter
+from pyproj import Proj
 from utils import plotting_ransac
 
 # %%
@@ -165,7 +164,7 @@ if __name__ == "__main__":
     # lat0 = stations["latitude"].median()
     lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
     lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
-    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
+    proj = Proj(f"+proj=aeqd +lon_0={lon0} +lat_0={lat0}  +units=km")
 
     # %%
     stations["depth_km"] = -stations["elevation_m"] / 1000

@@ -1,4 +1,5 @@
 # %%
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -6,13 +7,12 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
+import torch.optim as optim
 from matplotlib import pyplot as plt
 from pyproj import Proj
-from torch import nn
-import torch.optim as optim
-from tqdm.auto import tqdm
-import time
 from sklearn.neighbors import NearestNeighbors
+from torch import nn
+from tqdm.auto import tqdm
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -49,7 +49,7 @@ print(f"Number of picks: {len(picks)}")
 # picks = picks[picks["event_index"] < 100]
 
 # %%
-proj = Proj(f"+proj=sterea +lon_0={config['center'][0]} +lat_0={config['center'][1]} +units=km")
+proj = Proj(f"+proj=aeqd +lon_0={config['center'][0]} +lat_0={config['center'][1]} +units=km")
 stations[["x_km", "y_km"]] = stations.apply(
     lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
 )

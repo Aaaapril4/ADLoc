@@ -7,16 +7,15 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+import utils
+from adloc.seismic_ops import initialize_eikonal
+from adloc.travel_time import CalcTravelTime
 from matplotlib import pyplot as plt
 from pyproj import Proj
 from sklearn.neighbors import NearestNeighbors
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
-
-import utils
-from adloc.seismic_ops import initialize_eikonal
-from adloc.travel_time import CalcTravelTime
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -472,7 +471,7 @@ def main(args):
     picks = picks[picks["event_index"] < 100]
 
     # %%
-    proj = Proj(f"+proj=sterea +lon_0={config['center'][0]} +lat_0={config['center'][1]} +units=km")
+    proj = Proj(f"+proj=aeqd +lon_0={config['center'][0]} +lat_0={config['center'][1]} +units=km")
     stations[["x_km", "y_km"]] = stations.apply(
         lambda x: pd.Series(proj(longitude=x.longitude, latitude=x.latitude)), axis=1
     )

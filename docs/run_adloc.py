@@ -4,13 +4,12 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.optim as optim
-from pyproj import Proj
-from torch.utils.data import DataLoader
-from tqdm.auto import tqdm
-
 from adloc.adloc import TravelTime
 from adloc.data import PhaseDataset
 from adloc.eikonal2d import init_eikonal2d, traveltime
+from pyproj import Proj
+from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 from utils import plotting
 
 torch.manual_seed(0)
@@ -101,10 +100,10 @@ if __name__ == "__main__":
     ## Automatic region; you can also specify a region
     # lon0 = stations["longitude"].median()
     # lat0 = stations["latitude"].median()
-    # proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
+    # proj = Proj(f"+proj=aeqd +lon_0={lon0} +lat_0={lat0}  +units=km")
     lat0 = (config["minlatitude"] + config["maxlatitude"]) / 2
     lon0 = (config["minlongitude"] + config["maxlongitude"]) / 2
-    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0} +lat_ts={lat0} +units=km")
+    proj = Proj(f"+proj=aeqd +lon_0={lon0} +lat_0={lat0} +lat_ts={lat0} +units=km")
 
     if "depth_km" not in stations:
         stations["depth_km"] = -stations["elevation_m"] / 1000

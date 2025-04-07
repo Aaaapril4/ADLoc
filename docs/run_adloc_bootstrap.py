@@ -9,17 +9,16 @@ import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 import torch.optim as optim
+import utils
+from adloc import PhaseDataset
+from adloc.adloc import TravelTime
+from adloc.eikonal2d import init_eikonal2d, traveltime
 from matplotlib import pyplot as plt
 from pyproj import Proj
 from sklearn.neighbors import NearestNeighbors
 from torch import nn
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
-
-import utils
-from adloc import PhaseDataset
-from adloc.adloc import TravelTime
-from adloc.eikonal2d import init_eikonal2d, traveltime
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -316,7 +315,7 @@ def main(args):
 
     # %%
     if ("xlim_km" not in config) or ("ylim_km" not in config) or ("zlim_km" not in config):
-        proj = Proj(f"+proj=sterea +lon_0={config['longitude0']} +lat_0={config['latitude0']} +units=km")
+        proj = Proj(f"+proj=aeqd +lon_0={config['longitude0']} +lat_0={config['latitude0']} +units=km")
         config["xlim_km"] = proj(
             longitude=[config["minlongitude"], config["maxlongitude"]], latitude=[config["latitude0"]] * 2
         )[0]
@@ -359,7 +358,7 @@ def main(args):
     # %%
     lon0 = stations["longitude"].median()
     lat0 = stations["latitude"].median()
-    proj = Proj(f"+proj=sterea +lon_0={lon0} +lat_0={lat0}  +units=km")
+    proj = Proj(f"+proj=aeqd +lon_0={lon0} +lat_0={lat0}  +units=km")
     if "depth_km" not in stations:
         stations["depth_km"] = -stations["elevation_m"] / 1000
     if "station_term" not in stations:
