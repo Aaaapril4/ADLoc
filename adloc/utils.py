@@ -128,10 +128,10 @@ def invert(picks, stations, config, estimator, event_index, event_init):
         else:
             reg.fit(X[["idx_sta", "type", "score"]].values, X[["t_s"]].values)
     except Exception as e:
-        print(f"No valid model for event_index {event_index}.")
-        message = "RANSAC could not find a valid consensus set."
-        if str(e)[: len(message)] != message:
-            print(e)
+        # print(f"No valid model for event_index {event_index}.")
+        # message = "RANSAC could not find a valid consensus set."
+        # if str(e)[: len(message)] != message:
+        #     print(e)
         picks["mask"] = 0
         picks["residual_time"] = 0.0
         if config["use_amplitude"]:
@@ -229,9 +229,10 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
         NCPU = min(64, mp.cpu_count() * 2 - 1)
 
     jobs = []
+    num_events = len(picks["idx_eve"].unique())
     events_inverted = []
     picks_inverted = []
-    pbar = tqdm(total=len(picks.groupby("idx_eve")), desc=f"Iter {iter}")
+    pbar = tqdm(total=num_events, desc=f"Iter {iter}")
     with mp.get_context("spawn").Pool(NCPU) as pool:
         for idx_eve, picks_by_event in picks.groupby("idx_eve"):
             if events_init is not None:
@@ -276,7 +277,8 @@ def invert_location(picks, stations, config, estimator, events_init=None, iter=0
     if events_init is not None:
         events_inverted = events_inverted.merge(events_init[["event_index", "idx_eve"]], on="idx_eve")
 
-    print(f"ADLoc using {len(picks_inverted[picks_inverted['mask'] == 1])} picks outof {len(picks_inverted)} picks")
+    print(f"ADLoc locates {len(events_inverted)} events outof {num_events} events")
+    print(f"using {len(picks_inverted[picks_inverted['mask'] == 1])} picks outof {len(picks_inverted)} picks")
 
     return picks_inverted, events_inverted
 
