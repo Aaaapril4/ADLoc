@@ -112,6 +112,10 @@ def test_get_index():
 
 @njit
 def _interp(time_table, r, z, rgrid0, zgrid0, nr, nz, h):
+    shape = r.shape
+    r = r.reshape(-1)
+    z = z.reshape(-1)
+
     ir0 = np.floor((r - rgrid0) / h).clip(0, nr - 2).astype(np.int64)
     iz0 = np.floor((z - zgrid0) / h).clip(0, nz - 2).astype(np.int64)
     ir1 = ir0 + 1
@@ -140,7 +144,7 @@ def _interp(time_table, r, z, rgrid0, zgrid0, nr, nz, h):
         )
     )
 
-    return t
+    return t.reshape(shape)
 
 
 # def traveltime(event_loc, station_loc, phase_type, eikonal):
