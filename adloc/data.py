@@ -235,13 +235,13 @@ class PhaseDatasetDT(Dataset):
         if len(idx) == 0:
             return None  # skip empty batch
 
-        idx1_eve = self.pairs["idx_eve1"][idx]
-        idx2_eve = self.pairs["idx_eve2"][idx]
+        idx1_eve = self.pairs["idx_eve1"][idx].values
+        idx2_eve = self.pairs["idx_eve2"][idx].values
         idx_eve = np.stack([idx1_eve, idx2_eve], axis=1)
-        idx_sta = self.pairs["idx_sta"][idx]
-        phase_weight = self.pairs["phase_score"][idx]
-        phase_type = self.pairs["phase_type"][idx]
-        phase_time = self.pairs["phase_dtime"][idx]
+        idx_sta = self.pairs["idx_sta"][idx].values
+        phase_weight = self.pairs["phase_score"][idx].values
+        phase_type = self.pairs["phase_type"][idx].values
+        phase_time = self.pairs["phase_dtime"][idx].values
 
         return {
             "idx_eve": torch.tensor(idx_eve, dtype=torch.long),

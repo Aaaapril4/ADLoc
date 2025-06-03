@@ -56,33 +56,44 @@ for line in tqdm(lines):
         phase_dtime.append(dt)
 
 
-dtypes = np.dtype(
-    [
-        ("event_index1", np.int32),
-        ("event_index2", np.int32),
-        ("station_index", np.int32),
-        ("phase_type", np.int32),
-        ("phase_score", np.float32),
-        ("phase_dtime", np.float32),
-    ]
-)
-pairs_array = np.memmap(
-    os.path.join(result_path, "pair_dt.dat"),
-    mode="w+",
-    shape=(len(phase_dtime),),
-    dtype=dtypes,
-)
-pairs_array["event_index1"] = event_index1
-pairs_array["event_index2"] = event_index2
-pairs_array["station_index"] = station_index
-pairs_array["phase_type"] = phase_type
-pairs_array["phase_score"] = phase_score
-pairs_array["phase_dtime"] = phase_dtime
-with open(os.path.join(result_path, "pair_dtypes.pkl"), "wb") as f:
-    pickle.dump(dtypes, f)
+# dtypes = np.dtype(
+#     [
+#         ("event_index1", np.int32),
+#         ("event_index2", np.int32),
+#         ("station_index", np.int32),
+#         ("phase_type", np.int32),
+#         ("phase_score", np.float32),
+#         ("phase_dtime", np.float32),
+#     ]
+# )
+# pairs_array = np.memmap(
+#     os.path.join(result_path, "pair_dt.dat"),
+#     mode="w+",
+#     shape=(len(phase_dtime),),
+#     dtype=dtypes,
+# )
+# pairs_array["event_index1"] = event_index1
+# pairs_array["event_index2"] = event_index2
+# pairs_array["station_index"] = station_index
+# pairs_array["phase_type"] = phase_type
+# pairs_array["phase_score"] = phase_score
+# pairs_array["phase_dtime"] = phase_dtime
+# with open(os.path.join(result_path, "pair_dtypes.pkl"), "wb") as f:
+#     pickle.dump(dtypes, f)
 
 
 # %%
+pairs = pd.DataFrame(
+    {
+        "idx_eve1": event_index1,
+        "idx_eve2": event_index2,
+        "idx_sta": station_index,
+        "phase_type": phase_type,
+        "phase_score": phase_score,
+        "phase_dtime": phase_dtime,
+    }
+)
+pairs.to_csv(os.path.join(result_path, "pairs.csv"), index=False)
 events.to_csv(os.path.join(result_path, "pair_events.csv"), index=True, index_label="event_index")
 stations.to_csv(os.path.join(result_path, "pair_stations.csv"), index=True, index_label="station_id")
 

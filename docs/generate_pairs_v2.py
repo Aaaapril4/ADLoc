@@ -65,7 +65,7 @@ if __name__ == "__main__":
         os.makedirs(result_path)
 
     # %%
-    MAX_PAIR_DIST = 10  # km
+    MAX_PAIR_DIST = 20  # km
     MAX_NEIGHBORS = 50
     MIN_NEIGHBORS = 8
     MIN_OBS = 8
@@ -167,7 +167,7 @@ if __name__ == "__main__":
 
     # %%
     chunk_size = 10_000
-    num_chunk = len(event_pairs) // chunk_size
+    num_chunk = max(1, len(event_pairs) // chunk_size)
     pbar = tqdm(total=num_chunk, desc="Pairing picks")
     results = []
     jobs = []
@@ -186,36 +186,37 @@ if __name__ == "__main__":
         for job in jobs:
             results.append(job.get())
 
-    event_pairs = pd.concat(results, ignore_index=True)
-    event_pairs = event_pairs.drop_duplicates()
+    pairs = pd.concat(results, ignore_index=True)
+    pairs = pairs.drop_duplicates()
 
-    print(f"Number of pick pairs: {len(event_pairs)}")
+    print(f"Number of pick pairs: {len(pairs)}")
 
-    dtypes = np.dtype(
-        [
-            ("event_index1", np.int32),
-            ("event_index2", np.int32),
-            ("station_index", np.int32),
-            ("phase_type", np.int32),
-            ("phase_score", np.float32),
-            ("phase_dtime", np.float32),
-        ]
-    )
-    pairs_array = np.memmap(
-        os.path.join(result_path, "pair_dt.dat"),
-        mode="w+",
-        shape=(len(event_pairs),),
-        dtype=dtypes,
-    )
-    pairs_array["event_index1"] = event_pairs["idx_eve1"].values
-    pairs_array["event_index2"] = event_pairs["idx_eve2"].values
-    pairs_array["station_index"] = event_pairs["idx_sta"].values
-    pairs_array["phase_type"] = event_pairs["phase_type"].values
-    pairs_array["phase_score"] = event_pairs["phase_score"].values
-    pairs_array["phase_dtime"] = event_pairs["phase_dtime"].values
-    with open(os.path.join(result_path, "pair_dtypes.pkl"), "wb") as f:
-        pickle.dump(dtypes, f)
+    # dtypes = np.dtype(
+    #     [
+    #         ("event_index1", np.int32),
+    #         ("event_index2", np.int32),
+    #         ("station_index", np.int32),
+    #         ("phase_type", np.int32),
+    #         ("phase_score", np.float32),
+    #         ("phase_dtime", np.float32),
+    #     ]
+    # )
+    # pairs_array = np.memmap(
+    #     os.path.join(result_path, "pair_dt.dat"),
+    #     mode="w+",
+    #     shape=(len(event_pairs),),
+    #     dtype=dtypes,
+    # )
+    # pairs_array["event_index1"] = event_pairs["idx_eve1"].values
+    # pairs_array["event_index2"] = event_pairs["idx_eve2"].values
+    # pairs_array["station_index"] = event_pairs["idx_sta"].values
+    # pairs_array["phase_type"] = event_pairs["phase_type"].values
+    # pairs_array["phase_score"] = event_pairs["phase_score"].values
+    # pairs_array["phase_dtime"] = event_pairs["phase_dtime"].values
+    # with open(os.path.join(result_path, "pair_dtypes.pkl"), "wb") as f:
+    #     pickle.dump(dtypes, f)
 
+    pairs.to_csv(os.path.join(result_path, "pairs.csv"), index=False)
     events.to_csv(os.path.join(result_path, "pair_events.csv"), index=False)
     stations.to_csv(os.path.join(result_path, "pair_stations.csv"), index=False)
     picks.to_csv(os.path.join(result_path, "pair_picks.csv"), index=False)

@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from torch.autograd import Function
 
 from .eikonal2d import _interp
+import scipy.sparse
 
 
 class CalcTravelTime(Function):
@@ -247,9 +248,9 @@ class TravelTime(nn.Module):
             if phase_time is not None:
                 phase_time_ = phase_time[phase_type == type]
                 resisudal[phase_type == type] = phase_time_ - t_
-                # loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
+                loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
                 # loss += torch.sum(F.l1_loss(t_, phase_time_, reduction="none") * phase_weight_)
-                loss += torch.sum(torch.abs(t_ - phase_time_) * phase_weight_)
+                # loss += torch.sum(torch.abs(t_ - phase_time_) * phase_weight_)
 
         return {"phase_time": pred_time, "residual": resisudal, "loss": loss}
 
@@ -385,13 +386,115 @@ class TravelTimeDD(TravelTime):
 
             if phase_time is not None:
                 phase_time_ = phase_time[phase_type == type]
-                # loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
+                loss += torch.sum(F.huber_loss(t_, phase_time_, reduction="none") * phase_weight_)
                 # loss += torch.sum(F.l1_loss(t_, phase_time_, reduction="none") * phase_weight_)
-                loss += torch.sum(torch.abs(t_ - phase_time_) * phase_weight_)
+                # loss += torch.sum(torch.abs(t_ - phase_time_) * phase_weight_)
 
         if loss == 0.0:
             return None
         return {"phase_time": pred_time, "loss": loss}
+
+
+def hypodd(pairs, event_loc, event_time, station_loc, config):
+
+    num_event = len(event_loc)
+    num_pair = len(pairs)
+    pair_index = np.arange(num_pair)
+    event_index = pairs[["idx_eve1", "idx_eve2"]].values
+    station_index = pairs["idx_sta"].values
+    phase_type = pairs["phase_type"].values
+    phase_time = pairs["phase_dtime"].values
+    phase_weight = pairs["phase_score"].values
+
+    rgrid0 = config["eikonal"]["rgrid"][0]
+    zgrid0 = config["eikonal"]["zgrid"][0]
+    nr = config["eikonal"]["nr"]
+    nz = config["eikonal"]["nz"]
+    h = config["eikonal"]["h"]
+
+    for _ in range(10):
+
+        rows = []
+        cols = []
+        values = []
+        d = np.zeros(num_pair)
+
+        for type in np.unique(phase_type):
+            idx = phase_type == type
+            station_index_ = station_index[idx]
+            event_index_ = event_index[idx]
+            station_loc_ = station_loc[station_index_]
+            event_loc_ = event_loc[event_index_]
+            event_time_ = event_time[event_index_]
+            phase_time_ = phase_time[idx]
+            phase_weight_ = phase_weight[idx]
+
+            station_loc_ = station_loc_[:, np.newaxis, :]
+            x = event_loc_[:, :, 0] - station_loc_[:, :, 0]
+            y = event_loc_[:, :, 1] - station_loc_[:, :, 1]
+            z = event_loc_[:, :, 2] - station_loc_[:, :, 2]
+            r = np.sqrt(x**2 + y**2)
+
+            timetable = config["eikonal"]["up"] if type in [0, "P"] else config["eikonal"]["us"]
+            timetable_grad = config["eikonal"]["grad_up"] if type in [0, "P"] else config["eikonal"]["grad_us"]
+            timetable_grad_r = timetable_grad[0]
+            timetable_grad_z = timetable_grad[1]
+
+            x = x.reshape(-1)
+            y = y.reshape(-1)
+            r = r.reshape(-1)
+            z = z.reshape(-1)
+
+            tt = _interp(timetable, r, z, rgrid0, zgrid0, nr, nz, h)
+            dt = (tt[0::2] + event_time_[:, 0] - tt[1::2] - event_time_[:, 1]) - phase_time_
+
+            grad_r = _interp(timetable_grad_r, r, z, rgrid0, zgrid0, nr, nz, h)
+            grad_x = grad_r * x / (r + 1e-6)
+            grad_y = grad_r * y / (r + 1e-6)
+            grad_z = _interp(timetable_grad_z, r, z, rgrid0, zgrid0, nr, nz, h)
+            w = phase_weight_
+
+            rows_ = np.tile(pair_index[idx], 8)
+            cols_ = np.transpose(event_index_)[:, np.newaxis, :] * 4 + np.arange(4)[np.newaxis, :, np.newaxis]
+            values_ = np.concatenate(
+                [
+                    grad_x[0::2] * w,
+                    grad_y[0::2] * w,
+                    grad_z[0::2] * w,
+                    np.ones_like(w) * w,
+                    -grad_x[1::2] * w,
+                    -grad_y[1::2] * w,
+                    -grad_z[1::2] * w,
+                    -np.ones_like(w) * w,
+                ]
+            )
+
+            rows_ = rows_.reshape(-1)
+            cols_ = cols_.reshape(-1)
+            values_ = values_.reshape(-1)
+
+            rows.append(rows_)
+            cols.append(cols_)
+            values.append(values_)
+            d[pair_index[idx]] += dt * w
+
+        rows = np.concatenate(rows)
+        cols = np.concatenate(cols)
+        values = np.concatenate(values)
+        G = scipy.sparse.coo_matrix((values, (rows, cols)), shape=(num_pair, num_event * 4))
+
+        x, istop, itn, r1norm, r2norm, anorm, acond, arnorm, xnorm, _ = scipy.sparse.linalg.lsqr(
+            G, d, damp=0.0, conlim=100
+        )
+        x = x.reshape(num_event, 4)
+        event_loc = event_loc - x[:, :3]
+        event_time = event_time - x[:, 3]
+
+        print(
+            f"LSQR: {istop = }, {itn = }, {r1norm = :.3f}, {r2norm = :.3f}, {anorm = :.3f}, {acond = :.3f}, {arnorm = :.3f}, {xnorm = :.3f}"
+        )
+
+    return event_loc, event_time
 
 
 # %%

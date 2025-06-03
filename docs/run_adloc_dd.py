@@ -21,6 +21,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
 from utils import plotting_dd
+from adloc.adloc import hypodd
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -46,10 +47,10 @@ if __name__ == "__main__":
         master_process = True
         print("Non-DDP run")
 
-    # # %%
+    # %%
     # ##################################### DEMO DATA #####################################
-    # # region = "synthetic"
-    # region = "ridgecrest"
+    # region = "synthetic"
+    # # region = "ridgecrest"
     # data_path = f"test_data/{region}"
     # result_path = f"results/{region}"
     # figure_path = f"figures/{region}"
@@ -57,6 +58,59 @@ if __name__ == "__main__":
     # # picks_file = os.path.join(data_path, "gamma_picks.csv")
     # # events_file = os.path.join(data_path, "gamma_events.csv")
     # # stations_file = os.path.join(data_path, "stations.csv")
+
+    # # picks_file = os.path.join(result_path, "ransac_picks_sst.csv")
+    # # events_file = os.path.join(result_path, "ransac_events_sst.csv")
+    # # stations_file = os.path.join(result_path, "ransac_stations_sst.csv")
+
+    # picks_file = os.path.join(data_path, "picks.csv")
+    # events_file = os.path.join(data_path, "events.csv")
+    # stations_file = os.path.join(data_path, "stations.csv")
+
+    # # %% generate the double-difference pair file
+    # if ddp_local_rank == 0:
+    #     if (not os.path.exists(os.path.join(result_path, "pair_dt.dat"))) or (
+    #         input("Regenerate the double-difference pair file (pair_dt.dat)? (N/y): ") == "y"
+    #     ):
+    #         os.system(
+    #             f"python generate_pairs_v2.py --stations {stations_file} --events {events_file} --picks {picks_file} --result_path {result_path}"
+    #         )
+
+    # if ddp:
+    #     dist.barrier()
+
+    # # %% reading from the generated files
+    # events = pd.read_csv(os.path.join(result_path, "pair_events.csv"), parse_dates=["time"])
+    # stations = pd.read_csv(os.path.join(result_path, "pair_stations.csv"))
+    # picks = pd.read_csv(os.path.join(result_path, "pair_picks.csv"), parse_dates=["phase_time"])
+    # if "adloc_mask" in picks.columns:
+    #     picks = picks[picks["adloc_mask"] == 1]
+    # # dtypes = pickle.load(open(os.path.join(result_path, "pair_dtypes.pkl"), "rb"))
+    # # pairs = np.memmap(os.path.join(result_path, "pair_dt.dat"), mode="r", dtype=dtypes)
+    # pairs = pd.read_csv(os.path.join(result_path, "pairs.csv"))
+
+    # config = json.load(open(os.path.join(data_path, "config.json")))
+    # config["mindepth"] = 0
+    # config["maxdepth"] = 30
+
+    # ## Eikonal for 1D velocity model
+    # zz = [0.0, 5.5, 16.0, 32.0]
+    # vp = [5.5, 5.5, 6.7, 7.8]
+    # vp_vs_ratio = 1.73
+    # vs = [v / vp_vs_ratio for v in vp]
+    # h = 0.3
+
+    # ##################################### DEMO DATA #####################################
+
+    # ##################################### GaMMA Paper DATA #####################################
+    # region = "gamma_paper/"
+    # data_path = f"./{region}/"
+    # result_path = f"results/{region}"
+    # figure_path = f"figures/{region}/"
+
+    # # picks_file = os.path.join(data_path, "gamma_picks.csv")
+    # # events_file = os.path.join(data_path, "gamma_events.csv")
+    # # stations_file = os.path.join(data_path, "gamma_stations.csv")
 
     # picks_file = os.path.join(result_path, "ransac_picks_sst.csv")
     # events_file = os.path.join(result_path, "ransac_events_sst.csv")
@@ -78,105 +132,59 @@ if __name__ == "__main__":
     # events = pd.read_csv(os.path.join(result_path, "pair_events.csv"), parse_dates=["time"])
     # stations = pd.read_csv(os.path.join(result_path, "pair_stations.csv"))
     # picks = pd.read_csv(os.path.join(result_path, "pair_picks.csv"), parse_dates=["phase_time"])
-    # if "adloc_mask" in picks.columns:
-    #     picks = picks[picks["adloc_mask"] == 1]
-    # dtypes = pickle.load(open(os.path.join(result_path, "pair_dtypes.pkl"), "rb"))
-    # pairs = np.memmap(os.path.join(result_path, "pair_dt.dat"), mode="r", dtype=dtypes)
+    # # dtypes = pickle.load(open(os.path.join(result_path, "pair_dtypes.pkl"), "rb"))
+    # # pairs = np.memmap(os.path.join(result_path, "pair_dt.dat"), mode="r", dtype=dtypes)
+    # pairs = pd.read_csv(os.path.join(result_path, "pairs.csv"))
 
-    # config = json.load(open(os.path.join(data_path, "config.json")))
-    # config["mindepth"] = 0
-    # config["maxdepth"] = 30
+    # config = {
+    #     "minlatitude": 35.205,
+    #     "maxlatitude": 36.205,
+    #     "minlongitude": -118.004,
+    #     "maxlongitude": -117.004,
+    #     "mindepth": 0.0,
+    #     "maxdepth": 30.0,
+    # }
+    # config["use_amplitude"] = True
 
-    # ## Eikonal for 1D velocity model
+    # # ## Eikonal for 1D velocity model
     # zz = [0.0, 5.5, 16.0, 32.0]
     # vp = [5.5, 5.5, 6.7, 7.8]
     # vp_vs_ratio = 1.73
     # vs = [v / vp_vs_ratio for v in vp]
     # h = 0.3
 
-    # ##################################### DEMO DATA #####################################
+    # ##################################### GaMMA Paper DATA #####################################
 
-    ##################################### GaMMA Paper DATA #####################################
-    region = "gamma_paper/"
+    ##################################### Stanford DATA #####################################
+    region = "stanford"
     data_path = f"./{region}/"
     result_path = f"results/{region}"
     figure_path = f"figures/{region}/"
 
-    # picks_file = os.path.join(data_path, "gamma_picks.csv")
-    # events_file = os.path.join(data_path, "gamma_events.csv")
-    # stations_file = os.path.join(data_path, "gamma_stations.csv")
-
-    picks_file = os.path.join(result_path, "ransac_picks_sst.csv")
-    events_file = os.path.join(result_path, "ransac_events_sst.csv")
-    stations_file = os.path.join(result_path, "ransac_stations_sst.csv")
-
-    # %% generate the double-difference pair file
-    if ddp_local_rank == 0:
-        if (not os.path.exists(os.path.join(result_path, "pair_dt.dat"))) or (
-            input("Regenerate the double-difference pair file (pair_dt.dat)? (N/y): ") == "y"
-        ):
-            os.system(
-                f"python generate_pairs_v2.py --stations {stations_file} --events {events_file} --picks {picks_file} --result_path {result_path}"
-            )
-
-    if ddp:
-        dist.barrier()
-
-    # %% reading from the generated files
-    events = pd.read_csv(os.path.join(result_path, "pair_events.csv"), parse_dates=["time"])
-    stations = pd.read_csv(os.path.join(result_path, "pair_stations.csv"))
-    picks = pd.read_csv(os.path.join(result_path, "pair_picks.csv"), parse_dates=["phase_time"])
-    dtypes = pickle.load(open(os.path.join(result_path, "pair_dtypes.pkl"), "rb"))
-    pairs = np.memmap(os.path.join(result_path, "pair_dt.dat"), mode="r", dtype=dtypes)
-
-    config = {
-        "minlatitude": 35.205,
-        "maxlatitude": 36.205,
-        "minlongitude": -118.004,
-        "maxlongitude": -117.004,
-        "mindepth": 0.0,
-        "maxdepth": 30.0,
-    }
-    config["use_amplitude"] = True
-
-    # ## Eikonal for 1D velocity model
-    zz = [0.0, 5.5, 16.0, 32.0]
-    vp = [5.5, 5.5, 6.7, 7.8]
-    vp_vs_ratio = 1.73
-    vs = [v / vp_vs_ratio for v in vp]
-    h = 0.3
-
-    ##################################### GaMMA Paper DATA #####################################
-
-    # ##################################### Stanford DATA #####################################
-    # region = "stanford"
-    # data_path = f"./{region}/"
-    # result_path = f"results/{region}"
-    # figure_path = f"figures/{region}/"
-
-    # stations = pd.read_csv(f"{data_path}/pair_stations.csv")
-    # events = pd.read_csv(f"{data_path}/pair_events.csv")
+    stations = pd.read_csv(f"{data_path}/pair_stations.csv")
+    events = pd.read_csv(f"{data_path}/pair_events.csv")
+    pairs = pd.read_csv(f"{data_path}/pairs.csv")
 
     # dtypes = pickle.load(open(f"{data_path}/pair_dtypes.pkl", "rb"))
     # pairs = np.memmap(f"{data_path}/pair_dt.dat", mode="r", dtype=dtypes)
-    # picks = None
+    picks = None
 
-    # config = {
-    #     "maxlongitude": -117.10,
-    #     "minlongitude": -118.2,
-    #     "maxlatitude": 36.4,
-    #     "minlatitude": 35.3,
-    #     "mindepth": 0,
-    #     "maxdepth": 15,
-    # }
+    config = {
+        "maxlongitude": -117.10,
+        "minlongitude": -118.2,
+        "maxlatitude": 36.4,
+        "minlatitude": 35.3,
+        "mindepth": 0,
+        "maxdepth": 15,
+    }
 
-    # ## Eikonal for 1D velocity model
-    # zz = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 30.0]
-    # vp = [4.746, 4.793, 4.799, 5.045, 5.721, 5.879, 6.504, 6.708, 6.725, 7.800]
-    # vs = [2.469, 2.470, 2.929, 2.930, 3.402, 3.403, 3.848, 3.907, 3.963, 4.500]
-    # h = 0.3
+    ## Eikonal for 1D velocity model
+    zz = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 30.0]
+    vp = [4.746, 4.793, 4.799, 5.045, 5.721, 5.879, 6.504, 6.708, 6.725, 7.800]
+    vs = [2.469, 2.470, 2.929, 2.930, 3.402, 3.403, 3.848, 3.907, 3.963, 4.500]
+    h = 0.3
 
-    # ##################################### Stanford DATA #####################################
+    ##################################### Stanford DATA #####################################
 
     # %%
     if not os.path.exists(result_path):
@@ -243,6 +251,18 @@ if __name__ == "__main__":
     )
 
     # %%
+    # pairs = [
+    #     {
+    #         "idx_eve1": x[0],
+    #         "idx_eve2": x[1],
+    #         "idx_sta": x[2],
+    #         "phase_type": x[3],
+    #         "phase_score": x[4],
+    #         "phase_dtime": x[5],
+    #     }
+    #     for x in pairs
+    # ]
+    # pairs = pd.DataFrame(pairs)
     phase_dataset = PhaseDatasetDT(pairs, picks, events, stations, rank=ddp_local_rank, world_size=ddp_world_size)
     data_loader = DataLoader(phase_dataset, batch_size=None, shuffle=False, num_workers=0, drop_last=False)
 
@@ -250,13 +270,17 @@ if __name__ == "__main__":
     num_event = len(events)
     num_station = len(stations)
     station_loc = stations[["x_km", "y_km", "z_km"]].values
-    event_loc = events[["x_km", "y_km", "z_km"]].values  # + np.random.randn(num_event, 3) * 2.0
+    event_loc = events[["x_km", "y_km", "z_km"]].values
+    if region == "synthetic":
+        event_loc += np.random.randn(num_event, 3) * 6.0
+    event_time = np.zeros_like(event_loc[:, 0])
     travel_time = TravelTimeDD(
         num_event,
         num_station,
         station_loc=station_loc,
         event_loc0=event_loc,
         # event_time=event_time,
+        velocity=config["vel"],
         eikonal=config["eikonal"],
     )
     if ddp:
@@ -266,7 +290,20 @@ if __name__ == "__main__":
     if ddp_local_rank == 0:
         print(f"Dataset: {len(events)} events, {len(stations)} stations, {len(data_loader)} batches")
 
-    ## invert loss
+    event_loc, event_time = hypodd(pairs, event_loc, event_time, station_loc, config)
+
+    events = events_init.copy()
+    events["time"] = events["time"] + pd.to_timedelta(np.squeeze(event_time), unit="s")
+    events["x_km"] = event_loc[:, 0]
+    events["y_km"] = event_loc[:, 1]
+    events["z_km"] = event_loc[:, 2]
+    events[["longitude", "latitude"]] = events.apply(
+        lambda x: pd.Series(proj(x["x_km"], x["y_km"], inverse=True)), axis=1
+    )
+    events["depth_km"] = events["z_km"]
+    plotting_dd(events, stations, config, figure_path, events_init, suffix=f"_dd_lsqr")
+
+    # ## invert loss
     ######################################################################################################
     optimizer = optim.Adam(params=travel_time.parameters(), lr=0.1)
     # optimizer = optim.AdamW(params=travel_time.parameters(), lr=0.1, weight_decay=1.0)
@@ -324,14 +361,14 @@ if __name__ == "__main__":
 
         pairs_df = pd.DataFrame(
             {
-                "event_index1": pairs["event_index1"],
-                "event_index2": pairs["event_index2"],
-                "station_index": pairs["station_index"],
+                "idx_eve1": pairs["idx_eve1"],
+                "idx_eve2": pairs["idx_eve2"],
+                "station_index": pairs["idx_sta"],
             }
         )
         pairs_df = pairs_df[valid_index]
         config["MIN_OBS"] = 8
-        pairs_df = pairs_df.groupby(["event_index1", "event_index2"], as_index=False, group_keys=False).filter(
+        pairs_df = pairs_df.groupby(["idx_eve1", "idx_eve2"], as_index=False, group_keys=False).filter(
             lambda x: len(x) >= config["MIN_OBS"]
         )
         valid_index = np.zeros(len(pairs), dtype=bool)
@@ -345,9 +382,9 @@ if __name__ == "__main__":
         invert_event_time0 = raw_travel_time.event_time0.weight.clone().detach().numpy()
         invert_event_loc = invert_event_loc0 + invert_event_loc
         invert_event_time = invert_event_time0 + invert_event_time
-        valid_event_index = np.unique(pairs["event_index1"][valid_index])
+        valid_event_index = np.unique(pairs["idx_eve1"][valid_index])
         valid_event_index = np.concatenate(
-            [np.unique(pairs["event_index1"][valid_index]), np.unique(pairs["event_index2"][valid_index])]
+            [np.unique(pairs["idx_eve1"][valid_index]), np.unique(pairs["idx_eve2"][valid_index])]
         )
         valid_event_index = np.sort(np.unique(valid_event_index))
 
